@@ -6492,6 +6492,11 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
   const [roomData, setRoomData] = useState(null);
   const [onlineDice, setOnlineDice] = useState([1, 1, 1]);
   const [onlineCard, setOnlineCard] = useState(null);
+  const [rouletteNumber, setRouletteNumber] = useState(null);
+  const [rouletteChoice, setRouletteChoice] = useState("red");
+  const [diceHighLow, setDiceHighLow] = useState([1, 1]);
+  const [scratchCells, setScratchCells] = useState(["?", "?", "?"]);
+  const [pokerHand, setPokerHand] = useState([]);
 
   const cardSuits = ["♠", "♥", "♦", "♣"];
   const cardRanks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
@@ -6572,6 +6577,108 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
     const eye = Number(Object.keys(counts).find((k) => counts[k] === 1));
     if (eye) return { score: eye, mult: eye >= 4 ? 2 : 1, text: `${eye}の目` };
     return { score: 0, mult: 0, text: "目なし" };
+  };
+
+  const rouletteColor = (n) => {
+    if (n === 0) return "green";
+    const reds = [1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36];
+    return reds.includes(n) ? "red" : "black";
+  };
+  const playRoulette = async () => {
+    const b = parseBet();
+    if (!b || busy) return;
+    setBusy(true);
+    try {
+      const n = Math.floor(Math.random() * 37);
+      setRouletteNumber(n);
+      const color = rouletteColor(n);
+      const mult = rouletteChoice === "green" ? (color === "green" ? 14 : 0) : rouletteChoice === color ? 2 : 0;
+      await settleInstantGame("roulette", b, mult, `結果 ${n} / ${color}`, { number: n, color, choice: rouletteChoice });
+    } catch (e) {
+      console.error(e);
+      showNotification(e?.message || "ルーレットに失敗しました");
+    } finally {
+      setTimeout(() => setBusy(false), 700);
+    }
+  };
+  const playDiceHighLow = async (choice) => {
+    const b = parseBet();
+    if (!b || busy) return;
+    setBusy(true);
+    try {
+      const dice = [1 + Math.floor(Math.random() * 6), 1 + Math.floor(Math.random() * 6)];
+      setDiceHighLow(dice);
+      const sum = dice[0] + dice[1];
+      const result = sum === 7 ? "seven" : sum >= 8 ? "high" : "low";
+      const win = choice === result;
+      const mult = result === "seven" && win ? 5 : win ? 2 : 0;
+      await settleInstantGame("dice_highlow", b, mult, `合計 ${sum} / ${result === "seven" ? "7" : result === "high" ? "大" : "小"} ${win ? "的中" : "ハズレ"}`, { dice: dice.join("-"), choice, sum });
+    } catch (e) {
+      console.error(e);
+      showNotification(e?.message || "大小サイコロに失敗しました");
+    } finally {
+      setTimeout(() => setBusy(false), 500);
+    }
+  };
+  const playScratch = async () => {
+    const b = parseBet();
+    if (!b || busy) return;
+    setBusy(true);
+    try {
+      const icons = ["🍒", "🍋", "💎", "7️⃣", "⭐"];
+      const cells = [0, 1, 2].map(() => icons[Math.floor(Math.random() * icons.length)]);
+      setScratchCells(cells);
+      const same3 = cells[0] === cells[1] && cells[1] === cells[2];
+      const same2 = cells[0] === cells[1] || cells[1] === cells[2] || cells[0] === cells[2];
+      const mult = same3 ? (cells[0] === "7️⃣" ? 12 : cells[0] === "💎" ? 8 : 5) : same2 ? 2 : 0;
+      await settleInstantGame("scratch", b, mult, same3 ? `3つ一致 ${cells.join(" ")}` : same2 ? `2つ一致 ${cells.join(" ")}` : `ハズレ ${cells.join(" ")}`, { cells: cells.join(" ") });
+    } catch (e) {
+      console.error(e);
+      showNotification(e?.message || "スクラッチに失敗しました");
+    } finally {
+      setTimeout(() => setBusy(false), 500);
+    }
+  };
+  const pokerScore = (cards) => {
+    const ranks = cards.map((c) => c.rank);
+    const suits = cards.map((c) => c.suit);
+    const counts = {};
+    ranks.forEach((r) => counts[r] = (counts[r] || 0) + 1);
+    const values = Object.values(counts).sort((a, b2) => b2 - a);
+    const nums = cards.map((c) => c.rankIndex).sort((a, b2) => a - b2);
+    const flush = suits.every((x) => x === suits[0]);
+    const straight = (nums[2] - nums[0] === 2 && new Set(nums).size === 3) || (ranks.includes("A") && ranks.includes("Q") && ranks.includes("K"));
+    if (straight && flush) return { mult: 10, text: "ストレートフラッシュ" };
+    if (values[0] === 3) return { mult: 6, text: "スリーカード" };
+    if (straight) return { mult: 4, text: "ストレート" };
+    if (flush) return { mult: 3, text: "フラッシュ" };
+    if (values[0] === 2) return { mult: 2, text: "ワンペア" };
+    return { mult: 0, text: "ノーペア" };
+  };
+  const playThreeCardPoker = async () => {
+    const b = parseBet();
+    if (!b || busy) return;
+    setBusy(true);
+    try {
+      const deckKeys = new Set();
+      const hand = [];
+      while (hand.length < 3) {
+        const c = drawCard();
+        const key = `${c.suit}${c.rank}`;
+        if (!deckKeys.has(key)) {
+          deckKeys.add(key);
+          hand.push(c);
+        }
+      }
+      setPokerHand(hand);
+      const score = pokerScore(hand);
+      await settleInstantGame("three_card_poker", b, score.mult, `${score.text} / ${hand.map(cardText).join(" ")}`, { hand: hand.map(cardText).join(" "), handName: score.text });
+    } catch (e) {
+      console.error(e);
+      showNotification(e?.message || "3カードポーカーに失敗しました");
+    } finally {
+      setTimeout(() => setBusy(false), 600);
+    }
   };
 
   useEffect(() => {
@@ -6900,7 +7007,11 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
       /* @__PURE__ */ jsx(GameCard, { id: "highlow", emoji: "🃏", title: "ハイ＆ロー", sub: "親カードより大きいか小さいかを予想。", tone: "from-green-50 to-emerald-100" }),
       /* @__PURE__ */ jsx(GameCard, { id: "blackjack", emoji: "♠️", title: "ブラックジャック", sub: "21に近づける定番カードゲーム。", tone: "from-slate-50 to-gray-200" }),
       /* @__PURE__ */ jsx(GameCard, { id: "chinchiro", emoji: "🎲", title: "チンチロ", sub: "ピンゾロ・シゴロ・ヒフミなどを判定。", tone: "from-purple-50 to-indigo-100" }),
-      /* @__PURE__ */ jsx(GameCard, { id: "online", emoji: "🌐", title: "オンライン対戦", sub: "ルームIDで友だちと1対1対戦。チンチロ/ハイ＆ロー対応。", tone: "from-blue-50 to-cyan-100" })
+      /* @__PURE__ */ jsx(GameCard, { id: "online", emoji: "🌐", title: "オンライン対戦", sub: "ルームIDで友だちと1対1対戦。チンチロ/ハイ＆ロー対応。", tone: "from-blue-50 to-cyan-100" }),
+      /* @__PURE__ */ jsx(GameCard, { id: "roulette", emoji: "🎡", title: "ルーレット", sub: "赤/黒/緑を予想。緑は高倍率。", tone: "from-red-50 to-rose-100" }),
+      /* @__PURE__ */ jsx(GameCard, { id: "dicehl", emoji: "🎲", title: "大小サイコロ", sub: "2個のサイコロ合計で小/大/7を予想。", tone: "from-amber-50 to-yellow-100" }),
+      /* @__PURE__ */ jsx(GameCard, { id: "scratch", emoji: "🎫", title: "スクラッチ", sub: "3つの絵柄を削って一致を狙うミニゲーム。", tone: "from-pink-50 to-fuchsia-100" }),
+      /* @__PURE__ */ jsx(GameCard, { id: "threepoker", emoji: "🂡", title: "3カードポーカー", sub: "3枚の役で倍率が決まるカードゲーム。", tone: "from-indigo-50 to-violet-100" })
     ] })
   ] });
 
@@ -6970,6 +7081,64 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
         /* @__PURE__ */ jsx("div", { className: "font-black text-purple-100 mb-4", children: "ピンゾロx5 / ゾロ目x3 / シゴロx2 / ヒフミは負け" }),
         /* @__PURE__ */ jsx("div", { className: "flex justify-center gap-3 mb-5", children: chinchiroDice.map((d, i) => /* @__PURE__ */ jsx(DiceChip, { d, active: busy }, i)) }),
         /* @__PURE__ */ jsx("button", { disabled: busy, onClick: playChinchiro, className: "w-full py-4 rounded-2xl font-black text-purple-900 bg-white hover:bg-purple-50 shadow-lg disabled:bg-gray-300", children: busy ? "判定中..." : "壺を振る" })
+      ] }),
+      /* @__PURE__ */ jsx(ResultBox, {})
+    ] })
+  ] });
+
+  if (page === "roulette") return /* @__PURE__ */ jsxs("div", { className: "w-full h-full flex flex-col bg-rose-50", children: [
+    /* @__PURE__ */ jsx(Header, { title: "ルーレット", sub: "赤/黒/緑を予想 / 緑は高倍率" }),
+    /* @__PURE__ */ jsxs("div", { className: "flex-1 overflow-y-auto p-4", children: [
+      BetBox,
+      /* @__PURE__ */ jsxs("div", { className: "rounded-[36px] bg-gradient-to-br from-red-900 via-rose-700 to-black p-6 shadow-2xl text-white text-center", children: [
+        /* @__PURE__ */ jsx("div", { className: `mx-auto w-48 h-48 rounded-full border-[16px] border-yellow-300 bg-white shadow-inner flex items-center justify-center text-5xl font-black text-gray-900 ${busy ? "animate-spin" : ""}`, children: rouletteNumber === null ? "?" : rouletteNumber }),
+        /* @__PURE__ */ jsx("div", { className: "mt-4 grid grid-cols-3 gap-2", children: [
+          ["red", "赤 x2", "bg-red-500"],
+          ["black", "黒 x2", "bg-gray-900"],
+          ["green", "緑 x14", "bg-green-500"]
+        ].map((x) => /* @__PURE__ */ jsx("button", { onClick: () => setRouletteChoice(x[0]), className: `py-3 rounded-2xl font-black ${rouletteChoice === x[0] ? `${x[2]} text-white ring-4 ring-white/40` : "bg-white/20 text-white"}`, children: x[1] }, x[0])) }),
+        /* @__PURE__ */ jsx("button", { disabled: busy, onClick: playRoulette, className: "mt-4 w-full py-4 rounded-2xl bg-white text-red-700 font-black disabled:bg-gray-300", children: busy ? "回転中..." : "ルーレットを回す" })
+      ] }),
+      /* @__PURE__ */ jsx(ResultBox, {})
+    ] })
+  ] });
+
+  if (page === "dicehl") return /* @__PURE__ */ jsxs("div", { className: "w-full h-full flex flex-col bg-yellow-50", children: [
+    /* @__PURE__ */ jsx(Header, { title: "大小サイコロ", sub: "2〜6は小 / 8〜12は大 / 7は高倍率" }),
+    /* @__PURE__ */ jsxs("div", { className: "flex-1 overflow-y-auto p-4", children: [
+      BetBox,
+      /* @__PURE__ */ jsxs("div", { className: "rounded-[36px] bg-gradient-to-br from-amber-700 to-yellow-500 p-6 shadow-2xl text-white text-center", children: [
+        /* @__PURE__ */ jsx("div", { className: "flex justify-center gap-3 mb-5", children: diceHighLow.map((d, i) => /* @__PURE__ */ jsx(DiceChip, { d, active: busy }, i)) }),
+        /* @__PURE__ */ jsxs("div", { className: "grid grid-cols-3 gap-2", children: [
+          /* @__PURE__ */ jsx("button", { disabled: busy, onClick: () => playDiceHighLow("low"), className: "py-4 rounded-2xl bg-white text-amber-800 font-black disabled:bg-gray-300", children: "小 x2" }),
+          /* @__PURE__ */ jsx("button", { disabled: busy, onClick: () => playDiceHighLow("seven"), className: "py-4 rounded-2xl bg-black text-white font-black disabled:bg-gray-300", children: "7 x5" }),
+          /* @__PURE__ */ jsx("button", { disabled: busy, onClick: () => playDiceHighLow("high"), className: "py-4 rounded-2xl bg-white text-amber-800 font-black disabled:bg-gray-300", children: "大 x2" })
+        ] })
+      ] }),
+      /* @__PURE__ */ jsx(ResultBox, {})
+    ] })
+  ] });
+
+  if (page === "scratch") return /* @__PURE__ */ jsxs("div", { className: "w-full h-full flex flex-col bg-pink-50", children: [
+    /* @__PURE__ */ jsx(Header, { title: "スクラッチ", sub: "2つ一致 / 3つ一致で払い出し" }),
+    /* @__PURE__ */ jsxs("div", { className: "flex-1 overflow-y-auto p-4", children: [
+      BetBox,
+      /* @__PURE__ */ jsxs("div", { className: "rounded-[36px] bg-gradient-to-br from-pink-600 to-fuchsia-700 p-6 shadow-2xl text-white text-center", children: [
+        /* @__PURE__ */ jsx("div", { className: "grid grid-cols-3 gap-3 mb-5", children: scratchCells.map((c, i) => /* @__PURE__ */ jsx("div", { className: `h-24 rounded-3xl bg-white text-gray-900 shadow-xl flex items-center justify-center text-4xl font-black ${busy ? "animate-pulse" : ""}`, children: c }, i)) }),
+        /* @__PURE__ */ jsx("button", { disabled: busy, onClick: playScratch, className: "w-full py-4 rounded-2xl bg-white text-pink-700 font-black disabled:bg-gray-300", children: busy ? "削り中..." : "スクラッチする" })
+      ] }),
+      /* @__PURE__ */ jsx(ResultBox, {})
+    ] })
+  ] });
+
+  if (page === "threepoker") return /* @__PURE__ */ jsxs("div", { className: "w-full h-full flex flex-col bg-violet-50", children: [
+    /* @__PURE__ */ jsx(Header, { title: "3カードポーカー", sub: "役で倍率決定 / ストレートフラッシュ高倍率" }),
+    /* @__PURE__ */ jsxs("div", { className: "flex-1 overflow-y-auto p-4", children: [
+      BetBox,
+      /* @__PURE__ */ jsxs("div", { className: "rounded-[36px] bg-gradient-to-br from-indigo-950 to-violet-700 p-6 shadow-2xl text-white text-center", children: [
+        /* @__PURE__ */ jsx("div", { className: "flex justify-center gap-3 flex-wrap mb-5", children: pokerHand.length ? pokerHand.map((c, i) => /* @__PURE__ */ jsx(CardChip, { card: c }, `${c.suit}${c.rank}${i}`)) : [0, 1, 2].map((i) => /* @__PURE__ */ jsx(CardChip, { card: null, hidden: true }, i)) }),
+        /* @__PURE__ */ jsx("div", { className: "text-xs font-black text-violet-100 mb-4", children: "ワンペアx2 / フラッシュx3 / ストレートx4 / スリーカードx6 / ストレートフラッシュx10" }),
+        /* @__PURE__ */ jsx("button", { disabled: busy, onClick: playThreeCardPoker, className: "w-full py-4 rounded-2xl bg-white text-violet-800 font-black disabled:bg-gray-300", children: busy ? "配布中..." : "3枚配る" })
       ] }),
       /* @__PURE__ */ jsx(ResultBox, {})
     ] })
