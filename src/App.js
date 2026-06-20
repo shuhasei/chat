@@ -6497,6 +6497,12 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
   const [diceHighLow, setDiceHighLow] = useState([1, 1]);
   const [scratchCells, setScratchCells] = useState(["?", "?", "?"]);
   const [pokerHand, setPokerHand] = useState([]);
+  const [gameHistory, setGameHistory] = useState([]);
+  const [streak, setStreak] = useState(0);
+  const [bestWin, setBestWin] = useState(0);
+  const [pachinkoLights, setPachinkoLights] = useState([0, 1, 0, 1, 0]);
+  const [rouletteSpinLabel, setRouletteSpinLabel] = useState("READY");
+  const [autoPlayCount, setAutoPlayCount] = useState("5");
 
   const cardSuits = ["♠", "♥", "♦", "♣"];
   const cardRanks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
@@ -6564,7 +6570,11 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
     const payout = Math.floor(b * mult);
     const delta = payout - b;
     await updateWallet(delta, gameName, { bet: b, mult, payout, result: resultText, ...extra });
-    setLastResult({ gameName, bet: b, mult, payout, delta, resultText, ...extra });
+    const result = { id: `${Date.now()}_${Math.random()}`, gameName, bet: b, mult, payout, delta, resultText, ...extra };
+    setLastResult(result);
+    setGameHistory((prev) => [result, ...prev].slice(0, 12));
+    setStreak((prev) => delta > 0 ? prev + 1 : delta < 0 ? 0 : prev);
+    setBestWin((prev) => Math.max(prev, delta));
     showNotification(delta > 0 ? `${resultText} +${delta}コイン` : delta === 0 ? `${resultText} ±0` : `${resultText} ${delta}コイン`);
   };
   const chinchiroScore = (dice) => {
@@ -6589,8 +6599,15 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
     if (!b || busy) return;
     setBusy(true);
     try {
+      for (let i = 0; i < 12; i++) {
+        const temp = Math.floor(Math.random() * 37);
+        setRouletteNumber(temp);
+        setRouletteSpinLabel(i < 10 ? "SPIN" : "STOP");
+        await new Promise((resolve) => setTimeout(resolve, 35 + i * 8));
+      }
       const n = Math.floor(Math.random() * 37);
       setRouletteNumber(n);
+      setRouletteSpinLabel("RESULT");
       const color = rouletteColor(n);
       const mult = rouletteChoice === "green" ? (color === "green" ? 14 : 0) : rouletteChoice === color ? 2 : 0;
       await settleInstantGame("roulette", b, mult, `結果 ${n} / ${color}`, { number: n, color, choice: rouletteChoice });
@@ -6606,6 +6623,10 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
     if (!b || busy) return;
     setBusy(true);
     try {
+      for (let i = 0; i < 8; i++) {
+        setDiceHighLow([1 + Math.floor(Math.random() * 6), 1 + Math.floor(Math.random() * 6)]);
+        await new Promise((resolve) => setTimeout(resolve, 45));
+      }
       const dice = [1 + Math.floor(Math.random() * 6), 1 + Math.floor(Math.random() * 6)];
       setDiceHighLow(dice);
       const sum = dice[0] + dice[1];
@@ -6626,8 +6647,12 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
     setBusy(true);
     try {
       const icons = ["🍒", "🍋", "💎", "7️⃣", "⭐"];
+      setScratchCells(["?", "?", "?"]);
       const cells = [0, 1, 2].map(() => icons[Math.floor(Math.random() * icons.length)]);
-      setScratchCells(cells);
+      for (let i = 0; i < 3; i++) {
+        setScratchCells((prev) => prev.map((x, idx) => idx <= i ? cells[idx] : "?"));
+        await new Promise((resolve) => setTimeout(resolve, 220));
+      }
       const same3 = cells[0] === cells[1] && cells[1] === cells[2];
       const same2 = cells[0] === cells[1] || cells[1] === cells[2] || cells[0] === cells[2];
       const mult = same3 ? (cells[0] === "7️⃣" ? 12 : cells[0] === "💎" ? 8 : 5) : same2 ? 2 : 0;
@@ -6670,7 +6695,11 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
           hand.push(c);
         }
       }
-      setPokerHand(hand);
+      setPokerHand([]);
+      for (let i = 0; i < hand.length; i++) {
+        setPokerHand(hand.slice(0, i + 1));
+        await new Promise((resolve) => setTimeout(resolve, 180));
+      }
       const score = pokerScore(hand);
       await settleInstantGame("three_card_poker", b, score.mult, `${score.text} / ${hand.map(cardText).join(" ")}`, { hand: hand.map(cardText).join(" "), handName: score.text });
     } catch (e) {
@@ -6697,6 +6726,10 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
     if (!b || busy) return;
     setBusy(true);
     try {
+      for (let i = 0; i < 8; i++) {
+        setPachinkoLights([0, 1, 2, 3, 4].map((x) => (x + i) % 2));
+        await new Promise((resolve) => setTimeout(resolve, 45));
+      }
       const r = Math.random();
       let mult = 0;
       if (r < 0.55) mult = 0;
@@ -6794,6 +6827,10 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
     if (!b || busy) return;
     setBusy(true);
     try {
+      for (let i = 0; i < 8; i++) {
+        setChinchiroDice([1, 2, 3].map(() => 1 + Math.floor(Math.random() * 6)));
+        await new Promise((resolve) => setTimeout(resolve, 45));
+      }
       const dice = [1, 2, 3].map(() => 1 + Math.floor(Math.random() * 6));
       setChinchiroDice(dice);
       const score = chinchiroScore(dice);
@@ -6994,6 +7031,29 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
       lastResult.delta || 0
     ] })
   ] });
+  const GameStats = () => /* @__PURE__ */ jsxs("div", { className: "grid grid-cols-3 gap-2 mb-4", children: [
+    /* @__PURE__ */ jsxs("div", { className: "bg-white rounded-2xl p-3 border shadow-sm text-center", children: [
+      /* @__PURE__ */ jsx("div", { className: "text-[10px] font-black text-gray-400", children: "連勝" }),
+      /* @__PURE__ */ jsx("div", { className: "text-lg font-black text-green-600", children: streak })
+    ] }),
+    /* @__PURE__ */ jsxs("div", { className: "bg-white rounded-2xl p-3 border shadow-sm text-center", children: [
+      /* @__PURE__ */ jsx("div", { className: "text-[10px] font-black text-gray-400", children: "最高勝ち" }),
+      /* @__PURE__ */ jsx("div", { className: "text-lg font-black text-yellow-600", children: bestWin })
+    ] }),
+    /* @__PURE__ */ jsxs("div", { className: "bg-white rounded-2xl p-3 border shadow-sm text-center", children: [
+      /* @__PURE__ */ jsx("div", { className: "text-[10px] font-black text-gray-400", children: "履歴" }),
+      /* @__PURE__ */ jsx("div", { className: "text-lg font-black text-blue-600", children: gameHistory.length })
+    ] })
+  ] });
+  const HistoryBox = () => gameHistory.length > 0 && /* @__PURE__ */ jsxs("div", { className: "mt-4 bg-white border rounded-3xl p-4 shadow-sm", children: [
+    /* @__PURE__ */ jsx("div", { className: "text-xs font-black text-gray-500 mb-2", children: "最近のプレイ履歴" }),
+    /* @__PURE__ */ jsx("div", { className: "space-y-2 max-h-48 overflow-y-auto", children: gameHistory.map((h) => /* @__PURE__ */ jsxs("div", { className: "flex items-center gap-2 text-xs font-bold bg-gray-50 rounded-2xl px-3 py-2", children: [
+      /* @__PURE__ */ jsx("span", { className: "w-24 truncate text-gray-500", children: h.gameName }),
+      /* @__PURE__ */ jsx("span", { className: "flex-1 truncate text-gray-900", children: h.resultText }),
+      /* @__PURE__ */ jsx("span", { className: `${h.delta > 0 ? "text-green-600" : h.delta < 0 ? "text-red-500" : "text-gray-500"} font-black`, children: `${h.delta > 0 ? "+" : ""}${h.delta}` })
+    ] }, h.id)) })
+  ] });
+
   const GameCard = ({ id, emoji, title, sub, tone }) => /* @__PURE__ */ jsxs("button", { onClick: () => setPage(id), className: `text-left rounded-[32px] p-5 shadow border bg-gradient-to-br ${tone} hover:scale-[1.01] transition-transform`, children: [
     /* @__PURE__ */ jsx("div", { className: "text-4xl mb-3", children: emoji }),
     /* @__PURE__ */ jsx("div", { className: "text-lg font-black text-gray-900", children: title }),
@@ -7019,16 +7079,21 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
     /* @__PURE__ */ jsx(Header, { title: "リアルパチンコ", sub: "演出強化版 / 倍率抽選" }),
     /* @__PURE__ */ jsxs("div", { className: "flex-1 overflow-y-auto p-4", children: [
       BetBox,
+      /* @__PURE__ */ jsx(GameStats, {}),
       /* @__PURE__ */ jsxs("div", { className: "rounded-[36px] bg-gradient-to-b from-red-900 via-red-700 to-yellow-600 p-5 shadow-2xl border-4 border-yellow-300 text-center text-white", children: [
         /* @__PURE__ */ jsx("div", { className: "font-black tracking-[0.35em] text-yellow-200 mb-4", children: "LUCKY MACHINE" }),
-        /* @__PURE__ */ jsx("div", { className: "mx-auto max-w-sm rounded-[32px] bg-black/30 p-5 border border-yellow-200 shadow-inner", children: /* @__PURE__ */ jsx("div", { className: `mx-auto w-40 h-40 rounded-full border-[14px] border-yellow-200 bg-gradient-to-br from-white to-yellow-100 shadow-inner flex items-center justify-center text-6xl ${busy ? "animate-spin" : ""}`, children: "🟡" }) }),
+        /* @__PURE__ */ jsx("div", { className: "mx-auto max-w-sm rounded-[32px] bg-black/30 p-5 border border-yellow-200 shadow-inner", children: /* @__PURE__ */ jsxs("div", { className: "mx-auto max-w-xs", children: [
+          /* @__PURE__ */ jsx("div", { className: "grid grid-cols-5 gap-2 mb-4", children: pachinkoLights.map((v, i) => /* @__PURE__ */ jsx("div", { className: `h-8 rounded-full border border-yellow-200 ${busy || v ? "bg-yellow-300 shadow-lg shadow-yellow-300/50" : "bg-white/30"}` }, i)) }),
+          /* @__PURE__ */ jsx("div", { className: `mx-auto w-40 h-40 rounded-full border-[14px] border-yellow-200 bg-gradient-to-br from-white to-yellow-100 shadow-inner flex items-center justify-center text-6xl ${busy ? "animate-spin" : ""}`, children: "🟡" })
+        ] }) }),
         /* @__PURE__ */ jsx("div", { className: "mt-4 grid grid-cols-5 gap-2 text-xs font-black", children: ["0", "x1", "x2", "x5", "x10"].map((v) => /* @__PURE__ */ jsx("div", { className: "rounded-xl bg-white/20 py-2", children: v }, v)) }),
         /* @__PURE__ */ jsx("button", { disabled: busy, onClick: playPachinko, className: "mt-5 w-full py-4 rounded-2xl font-black text-red-900 bg-yellow-300 hover:bg-yellow-200 shadow-lg disabled:bg-gray-300 flex items-center justify-center gap-2", children: busy ? /* @__PURE__ */ jsx(Loader2, { className: "w-5 h-5 animate-spin" }) : /* @__PURE__ */ jsxs(Fragment, { children: [
           /* @__PURE__ */ jsx(Disc, { className: "w-5 h-5" }),
           "球を打つ"
         ] }) })
       ] }),
-      /* @__PURE__ */ jsx(ResultBox, {})
+      /* @__PURE__ */ jsx(ResultBox, {}),
+      /* @__PURE__ */ jsx(HistoryBox, {})
     ] })
   ] });
 
@@ -7036,6 +7101,7 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
     /* @__PURE__ */ jsx(Header, { title: "ハイ＆ロー", sub: "トランプ賭けゲーム / ドローは返金" }),
     /* @__PURE__ */ jsxs("div", { className: "flex-1 overflow-y-auto p-4", children: [
       BetBox,
+      /* @__PURE__ */ jsx(GameStats, {}),
       /* @__PURE__ */ jsxs("div", { className: "rounded-[36px] bg-gradient-to-br from-green-800 to-emerald-600 p-6 shadow-2xl text-white", children: [
         /* @__PURE__ */ jsx("div", { className: "text-center text-sm font-black text-green-100 mb-4", children: "親カード" }),
         /* @__PURE__ */ jsx("div", { className: "flex justify-center mb-5", children: /* @__PURE__ */ jsx(CardChip, { card: highLowCard }) }),
@@ -7045,7 +7111,8 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
           /* @__PURE__ */ jsx("button", { disabled: busy, onClick: () => playHighLow("high"), className: "py-4 rounded-2xl bg-red-500 text-white font-black disabled:bg-gray-300", children: "HIGH" })
         ] })
       ] }),
-      /* @__PURE__ */ jsx(ResultBox, {})
+      /* @__PURE__ */ jsx(ResultBox, {}),
+      /* @__PURE__ */ jsx(HistoryBox, {})
     ] })
   ] });
 
@@ -7053,6 +7120,7 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
     /* @__PURE__ */ jsx(Header, { title: "ブラックジャック", sub: "21に近づけるカードゲーム" }),
     /* @__PURE__ */ jsxs("div", { className: "flex-1 overflow-y-auto p-4", children: [
       BetBox,
+      /* @__PURE__ */ jsx(GameStats, {}),
       /* @__PURE__ */ jsxs("div", { className: "rounded-[36px] bg-gradient-to-br from-gray-950 to-slate-700 p-6 shadow-2xl text-white", children: [
         /* @__PURE__ */ jsxs("div", { className: "mb-5", children: [
           /* @__PURE__ */ jsx("div", { className: "text-xs font-black text-gray-300 mb-2", children: `DEALER ${blackjack.phase === "playing" ? bjCountText(blackjack.dealer, true) : bjCountText(blackjack.dealer)}` }),
@@ -7069,7 +7137,8 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
           /* @__PURE__ */ jsx("button", { disabled: !["playing", "stand", "bust"].includes(blackjack.phase), onClick: settleBlackjack, className: "py-4 rounded-2xl bg-yellow-500 text-white font-black disabled:bg-gray-300", children: "精算" })
         ] })
       ] }),
-      /* @__PURE__ */ jsx(ResultBox, {})
+      /* @__PURE__ */ jsx(ResultBox, {}),
+      /* @__PURE__ */ jsx(HistoryBox, {})
     ] })
   ] });
 
@@ -7077,12 +7146,14 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
     /* @__PURE__ */ jsx(Header, { title: "チンチロ", sub: "サイコロ3個 / 役判定つき" }),
     /* @__PURE__ */ jsxs("div", { className: "flex-1 overflow-y-auto p-4", children: [
       BetBox,
+      /* @__PURE__ */ jsx(GameStats, {}),
       /* @__PURE__ */ jsxs("div", { className: "rounded-[36px] bg-gradient-to-br from-purple-900 to-indigo-700 p-6 shadow-2xl text-white text-center", children: [
         /* @__PURE__ */ jsx("div", { className: "font-black text-purple-100 mb-4", children: "ピンゾロx5 / ゾロ目x3 / シゴロx2 / ヒフミは負け" }),
         /* @__PURE__ */ jsx("div", { className: "flex justify-center gap-3 mb-5", children: chinchiroDice.map((d, i) => /* @__PURE__ */ jsx(DiceChip, { d, active: busy }, i)) }),
         /* @__PURE__ */ jsx("button", { disabled: busy, onClick: playChinchiro, className: "w-full py-4 rounded-2xl font-black text-purple-900 bg-white hover:bg-purple-50 shadow-lg disabled:bg-gray-300", children: busy ? "判定中..." : "壺を振る" })
       ] }),
-      /* @__PURE__ */ jsx(ResultBox, {})
+      /* @__PURE__ */ jsx(ResultBox, {}),
+      /* @__PURE__ */ jsx(HistoryBox, {})
     ] })
   ] });
 
@@ -7090,8 +7161,9 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
     /* @__PURE__ */ jsx(Header, { title: "ルーレット", sub: "赤/黒/緑を予想 / 緑は高倍率" }),
     /* @__PURE__ */ jsxs("div", { className: "flex-1 overflow-y-auto p-4", children: [
       BetBox,
+      /* @__PURE__ */ jsx(GameStats, {}),
       /* @__PURE__ */ jsxs("div", { className: "rounded-[36px] bg-gradient-to-br from-red-900 via-rose-700 to-black p-6 shadow-2xl text-white text-center", children: [
-        /* @__PURE__ */ jsx("div", { className: `mx-auto w-48 h-48 rounded-full border-[16px] border-yellow-300 bg-white shadow-inner flex items-center justify-center text-5xl font-black text-gray-900 ${busy ? "animate-spin" : ""}`, children: rouletteNumber === null ? "?" : rouletteNumber }),
+        /* @__PURE__ */ jsx("div", { className: `mx-auto w-48 h-48 rounded-full border-[16px] border-yellow-300 bg-white shadow-inner flex items-center justify-center text-5xl font-black text-gray-900 ${busy ? "animate-spin" : ""}`, children: /* @__PURE__ */ jsxs("div", { children: [/* @__PURE__ */ jsx("div", { children: rouletteNumber === null ? "?" : rouletteNumber }), /* @__PURE__ */ jsx("div", { className: "text-xs font-black text-gray-500", children: rouletteSpinLabel })] }) }),
         /* @__PURE__ */ jsx("div", { className: "mt-4 grid grid-cols-3 gap-2", children: [
           ["red", "赤 x2", "bg-red-500"],
           ["black", "黒 x2", "bg-gray-900"],
@@ -7099,7 +7171,8 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
         ].map((x) => /* @__PURE__ */ jsx("button", { onClick: () => setRouletteChoice(x[0]), className: `py-3 rounded-2xl font-black ${rouletteChoice === x[0] ? `${x[2]} text-white ring-4 ring-white/40` : "bg-white/20 text-white"}`, children: x[1] }, x[0])) }),
         /* @__PURE__ */ jsx("button", { disabled: busy, onClick: playRoulette, className: "mt-4 w-full py-4 rounded-2xl bg-white text-red-700 font-black disabled:bg-gray-300", children: busy ? "回転中..." : "ルーレットを回す" })
       ] }),
-      /* @__PURE__ */ jsx(ResultBox, {})
+      /* @__PURE__ */ jsx(ResultBox, {}),
+      /* @__PURE__ */ jsx(HistoryBox, {})
     ] })
   ] });
 
@@ -7107,6 +7180,7 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
     /* @__PURE__ */ jsx(Header, { title: "大小サイコロ", sub: "2〜6は小 / 8〜12は大 / 7は高倍率" }),
     /* @__PURE__ */ jsxs("div", { className: "flex-1 overflow-y-auto p-4", children: [
       BetBox,
+      /* @__PURE__ */ jsx(GameStats, {}),
       /* @__PURE__ */ jsxs("div", { className: "rounded-[36px] bg-gradient-to-br from-amber-700 to-yellow-500 p-6 shadow-2xl text-white text-center", children: [
         /* @__PURE__ */ jsx("div", { className: "flex justify-center gap-3 mb-5", children: diceHighLow.map((d, i) => /* @__PURE__ */ jsx(DiceChip, { d, active: busy }, i)) }),
         /* @__PURE__ */ jsxs("div", { className: "grid grid-cols-3 gap-2", children: [
@@ -7115,7 +7189,8 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
           /* @__PURE__ */ jsx("button", { disabled: busy, onClick: () => playDiceHighLow("high"), className: "py-4 rounded-2xl bg-white text-amber-800 font-black disabled:bg-gray-300", children: "大 x2" })
         ] })
       ] }),
-      /* @__PURE__ */ jsx(ResultBox, {})
+      /* @__PURE__ */ jsx(ResultBox, {}),
+      /* @__PURE__ */ jsx(HistoryBox, {})
     ] })
   ] });
 
@@ -7127,7 +7202,8 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
         /* @__PURE__ */ jsx("div", { className: "grid grid-cols-3 gap-3 mb-5", children: scratchCells.map((c, i) => /* @__PURE__ */ jsx("div", { className: `h-24 rounded-3xl bg-white text-gray-900 shadow-xl flex items-center justify-center text-4xl font-black ${busy ? "animate-pulse" : ""}`, children: c }, i)) }),
         /* @__PURE__ */ jsx("button", { disabled: busy, onClick: playScratch, className: "w-full py-4 rounded-2xl bg-white text-pink-700 font-black disabled:bg-gray-300", children: busy ? "削り中..." : "スクラッチする" })
       ] }),
-      /* @__PURE__ */ jsx(ResultBox, {})
+      /* @__PURE__ */ jsx(ResultBox, {}),
+      /* @__PURE__ */ jsx(HistoryBox, {})
     ] })
   ] });
 
@@ -7140,7 +7216,8 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
         /* @__PURE__ */ jsx("div", { className: "text-xs font-black text-violet-100 mb-4", children: "ワンペアx2 / フラッシュx3 / ストレートx4 / スリーカードx6 / ストレートフラッシュx10" }),
         /* @__PURE__ */ jsx("button", { disabled: busy, onClick: playThreeCardPoker, className: "w-full py-4 rounded-2xl bg-white text-violet-800 font-black disabled:bg-gray-300", children: busy ? "配布中..." : "3枚配る" })
       ] }),
-      /* @__PURE__ */ jsx(ResultBox, {})
+      /* @__PURE__ */ jsx(ResultBox, {}),
+      /* @__PURE__ */ jsx(HistoryBox, {})
     ] })
   ] });
 
