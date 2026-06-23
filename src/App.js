@@ -6503,6 +6503,13 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
   const [pachinkoLights, setPachinkoLights] = useState([0, 1, 0, 1, 0]);
   const [rouletteSpinLabel, setRouletteSpinLabel] = useState("READY");
   const [autoPlayCount, setAutoPlayCount] = useState("5");
+  const ONLINE_ROOM_STORAGE_KEY = `coin_battle_last_room_${user?.uid || "guest"}`;
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(ONLINE_ROOM_STORAGE_KEY);
+      if (saved && !roomIdInput) setRoomIdInput(saved);
+    } catch (e) {}
+  }, [ONLINE_ROOM_STORAGE_KEY]);
 
   const cardSuits = ["♠", "♥", "♦", "♣"];
   const cardRanks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
@@ -6866,6 +6873,7 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
       });
       setMyRoomId(roomRef.id);
       setRoomIdInput(roomRef.id);
+      try { localStorage.setItem(ONLINE_ROOM_STORAGE_KEY, roomRef.id); } catch (e) {}
       setPage("online");
       showNotification("対戦ルームを作成しました");
     } catch (e) {
@@ -6881,18 +6889,35 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
     setBusy(true);
     try {
       const roomRef = doc(db, ...gamePath("coin_battle_rooms", id));
+      let reopenOnly = false;
       await runTransaction(db, async (t) => {
         const snap = await t.get(roomRef);
         if (!snap.exists()) throw new Error("ルームが見つかりません");
         const data = snap.data();
-        if (data.status !== "waiting") throw new Error("参加できないルームです");
-        if (data.hostUid === user.uid) throw new Error("自分のルームです");
-        if ((profile?.wallet || 0) < (data.bet || 0)) throw new Error("コイン残高が足りません");
+        const isHost = data.hostUid === user.uid;
+        const isGuest = data.guestUid === user.uid;
+
+        // ページ移動後の復帰：開催者/参加済みプレイヤーは、対戦中/終了後でも同じルームに戻れる
+        if (isHost || isGuest) {
+          reopenOnly = true;
+          t.update(roomRef, { updatedAt: serverTimestamp() });
+          return;
+        }
+
+        // 新規参加できるのは待機中かつゲスト未設定のルームだけ
+        if (data.status !== "waiting" || data.guestUid) {
+          throw new Error("このルームはすでに対戦中です。開催者に新しいルームを作成してもらってください");
+        }
+
+        const betAmount = data.bet || 0;
+        if ((profile?.wallet || 0) < betAmount) throw new Error("コイン残高が足りません");
         t.update(roomRef, { guestUid: user.uid, guestName: profile?.name || "Guest", status: "playing", updatedAt: serverTimestamp() });
       });
       setMyRoomId(id);
+      setRoomIdInput(id);
+      try { localStorage.setItem(ONLINE_ROOM_STORAGE_KEY, id); } catch (e) {}
       setPage("online");
-      showNotification("対戦に参加しました");
+      showNotification(reopenOnly ? "対戦ルームに戻りました" : "対戦に参加しました");
     } catch (e) {
       console.error(e);
       showNotification(e?.message || "参加に失敗しました");
@@ -7233,9 +7258,13 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
         ] }),
         /* @__PURE__ */ jsx("button", { disabled: busy, onClick: createBattleRoom, className: "mt-3 w-full py-4 rounded-2xl bg-blue-500 hover:bg-blue-600 text-white font-black disabled:bg-gray-300", children: "ルームを作成" }),
         /* @__PURE__ */ jsxs("div", { className: "mt-3 flex gap-2", children: [
-          /* @__PURE__ */ jsx("input", { value: roomIdInput, onChange: (e) => setRoomIdInput(e.target.value), className: "min-w-0 flex-1 bg-gray-50 border rounded-2xl px-4 py-3 font-bold outline-none", placeholder: "ルームIDを入力" }),
-          /* @__PURE__ */ jsx("button", { disabled: busy, onClick: joinBattleRoom, className: "px-4 rounded-2xl bg-gray-900 text-white font-black disabled:bg-gray-300", children: "参加" })
-        ] })
+          /* @__PURE__ */ jsx("input", { value: roomIdInput, onChange: (e) => {
+            setRoomIdInput(e.target.value);
+            try { localStorage.setItem(ONLINE_ROOM_STORAGE_KEY, e.target.value.trim()); } catch (err) {}
+          }, className: "min-w-0 flex-1 bg-gray-50 border rounded-2xl px-4 py-3 font-bold outline-none", placeholder: "ルームIDを入力" }),
+          /* @__PURE__ */ jsx("button", { disabled: busy, onClick: joinBattleRoom, className: "px-4 rounded-2xl bg-gray-900 text-white font-black disabled:bg-gray-300", children: "参加/復帰" })
+        ] }),
+        /* @__PURE__ */ jsx("div", { className: "mt-2 text-[11px] font-bold text-gray-500 leading-relaxed", children: "ページ移動後も、同じルームIDを入力すれば開催者・参加者ともに対戦ルームへ復帰できます。" })
       ] }),
       roomData && /* @__PURE__ */ jsxs("div", { className: "bg-white rounded-[32px] p-5 shadow border", children: [
         /* @__PURE__ */ jsxs("div", { className: "flex items-center gap-2 mb-3", children: [
