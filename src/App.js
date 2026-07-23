@@ -6596,9 +6596,8 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
   const claimDailyBonus = async () => {
     const k = todayKey();
     if (dailyBonusDate === k) return showNotification("今日のログインボーナスは受け取り済みです");
-    const amount = 100;
     try {
-      await directCoinReward(amount, "ログインボーナス");
+      await directCoinReward(100, "ログインボーナス");
       setDailyBonusDate(k);
       localStorage.setItem("coin_daily_bonus_date_v1", k);
     } catch (e) {
@@ -8103,6 +8102,11 @@ const CoinArcadeView = ({ onBack }) => {
   ] });
 };
 // ===================== /Coin Arcade =====================
+
+
+/* ========================= v21 Feature Mega Pack: 100 functions ========================= */
+
+
 
 function App() {
   const [user, setUser] = useState(null);
