@@ -6513,10 +6513,27 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
   const [roomIdInput, setRoomIdInput] = useState("");
   const [myRoomId, setMyRoomId] = useState("");
   const [roomData, setRoomData] = useState(null);
+  const [oldMaidRoomIdInput, setOldMaidRoomIdInput] = useState("");
+  const [oldMaidRoomId, setOldMaidRoomId] = useState("");
+  const [oldMaidRoom, setOldMaidRoom] = useState(null);
+  const [oldMaidBet, setOldMaidBet] = useState("10");
+  const [oldMaidSelectedIndex, setOldMaidSelectedIndex] = useState(null);
   const [onlineDice, setOnlineDice] = useState([1, 1, 1]);
   const [onlineCard, setOnlineCard] = useState(null);
   const [genericGame, setGenericGame] = useState(null);
   const [genericResult, setGenericResult] = useState("");
+  const [memoryCards, setMemoryCards] = useState([]);
+  const [memoryFlipped, setMemoryFlipped] = useState([]);
+  const [memoryMatched, setMemoryMatched] = useState([]);
+  const [memoryMoves, setMemoryMoves] = useState(0);
+  const [treasureBoxes, setTreasureBoxes] = useState([]);
+  const [treasureOpened, setTreasureOpened] = useState([]);
+  const [quizIndex, setQuizIndex] = useState(0);
+  const [quizScore, setQuizScore] = useState(0);
+  const [jankenResult, setJankenResult] = useState(null);
+  const [fishingSpots, setFishingSpots] = useState([]);
+  const [fishingResult, setFishingResult] = useState("");
+  const [miningPower, setMiningPower] = useState(0);
   const [rouletteNumber, setRouletteNumber] = useState(null);
   const [rouletteChoice, setRouletteChoice] = useState("red");
   const [diceHighLow, setDiceHighLow] = useState([1, 1]);
@@ -6752,6 +6769,17 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
     });
     return () => unsub();
   }, [myRoomId]);
+
+  useEffect(() => {
+    if (!oldMaidRoomId) return;
+    const unsub = onSnapshot(doc(db, ...gamePath("oldmaid_rooms", oldMaidRoomId)), (snap) => {
+      setOldMaidRoom(snap.exists() ? { id: snap.id, ...snap.data() } : null);
+    }, (e) => {
+      console.error(e);
+      showNotification("ババ抜きルームの読み込みに失敗しました");
+    });
+    return () => unsub();
+  }, [oldMaidRoomId]);
 
   const playPachinko = async () => {
     const b = parseBet();
@@ -7049,9 +7077,372 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
   };
 
 
+
+  const makeOldMaidDeck = () => {
+    const suits = ["♠", "♥", "♦", "♣"];
+    const ranks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
+    const deck = [];
+    suits.forEach((suit) => ranks.forEach((rank) => deck.push({ suit, rank, id: `${suit}${rank}_${Math.random().toString(36).slice(2)}` })));
+    deck.push({ suit: "🃏", rank: "JOKER", id: `JOKER_${Math.random().toString(36).slice(2)}` });
+    for (let i = deck.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+    return deck;
+  };
+  const removeOldMaidPairs = (cards) => {
+    const rest = [...(cards || [])];
+    const removed = [];
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (let i = 0; i < rest.length; i++) {
+        if (rest[i].rank === "JOKER") continue;
+        const j = rest.findIndex((c, idx) => idx !== i && c.rank === rest[i].rank);
+        if (j !== -1) {
+          const a = rest[i];
+          const b = rest[j];
+          removed.push(a, b);
+          rest.splice(Math.max(i, j), 1);
+          rest.splice(Math.min(i, j), 1);
+          changed = true;
+          break;
+        }
+      }
+    }
+    return { hand: rest, removed };
+  };
+  const shuffleCards = (cards) => {
+    const arr = [...(cards || [])];
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  };
+  const createOldMaidRoom = async () => {
+    const b = parseInt(oldMaidBet, 10);
+    if (!Number.isFinite(b) || b <= 0) return showNotification("ベット額を入力してください");
+    if ((profile?.wallet || 0) < b) return showNotification("コイン残高が足りません");
+    setBusy(true);
+    try {
+      const deck = makeOldMaidDeck();
+      const h1 = removeOldMaidPairs(deck.filter((_, i) => i % 2 === 0));
+      const h2 = removeOldMaidPairs(deck.filter((_, i) => i % 2 === 1));
+      const roomRef = doc(collection(db, ...gamePath("oldmaid_rooms")));
+      await setDoc(roomRef, {
+        hostUid: user.uid,
+        hostName: profile?.name || "Host",
+        guestUid: "",
+        guestName: "",
+        bet: b,
+        status: "waiting",
+        turnUid: user.uid,
+        hostHand: shuffleCards(h1.hand),
+        guestHand: shuffleCards(h2.hand),
+        hostRemoved: h1.removed,
+        guestRemoved: h2.removed,
+        log: ["ババ抜きルームを作成しました"],
+        winnerUid: "",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      setOldMaidRoomId(roomRef.id);
+      setOldMaidRoomIdInput(roomRef.id);
+      setRoomIdInput(roomRef.id);
+      setPage("oldmaid_online");
+      showNotification("ババ抜きルームを作成しました");
+    } catch (e) {
+      console.error(e);
+      showNotification(e?.message || "ババ抜きルーム作成に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const joinOldMaidRoom = async () => {
+    const id = (oldMaidRoomIdInput || roomIdInput).trim();
+    if (!id) return showNotification("ルームIDを入力してください");
+    setBusy(true);
+    try {
+      const roomRef = doc(db, ...gamePath("oldmaid_rooms", id));
+      await runTransaction(db, async (t) => {
+        const snap = await t.get(roomRef);
+        if (!snap.exists()) throw new Error("ルームが見つかりません");
+        const data = snap.data();
+        if (data.hostUid === user.uid || data.guestUid === user.uid) {
+          t.update(roomRef, { updatedAt: serverTimestamp() });
+          return;
+        }
+        if (data.status !== "waiting" || data.guestUid) throw new Error("このルームには参加できません");
+        if ((profile?.wallet || 0) < (data.bet || 0)) throw new Error("コイン残高が足りません");
+        t.update(roomRef, { guestUid: user.uid, guestName: profile?.name || "Guest", status: "playing", updatedAt: serverTimestamp(), log: [...(data.log || []), `${profile?.name || "Guest"} が参加しました`] });
+      });
+      setOldMaidRoomId(id);
+      setPage("oldmaid_online");
+      showNotification("ババ抜きルームに入りました");
+    } catch (e) {
+      console.error(e);
+      showNotification(e?.message || "参加に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const drawOldMaidCard = async (index) => {
+    if (!oldMaidRoom || busy) return;
+    const isHost = oldMaidRoom.hostUid === user.uid;
+    const isGuest = oldMaidRoom.guestUid === user.uid;
+    if (!isHost && !isGuest) return showNotification("参加者ではありません");
+    if (oldMaidRoom.status !== "playing") return showNotification("対戦中ではありません");
+    if (oldMaidRoom.turnUid !== user.uid) return showNotification("相手の番です");
+    setBusy(true);
+    try {
+      const roomRef = doc(db, ...gamePath("oldmaid_rooms", oldMaidRoom.id));
+      await runTransaction(db, async (t) => {
+        const snap = await t.get(roomRef);
+        if (!snap.exists()) throw new Error("ルームが見つかりません");
+        const data = snap.data();
+        const meHost = data.hostUid === user.uid;
+        const myKey = meHost ? "hostHand" : "guestHand";
+        const otherKey = meHost ? "guestHand" : "hostHand";
+        const removedKey = meHost ? "hostRemoved" : "guestRemoved";
+        const myName = meHost ? data.hostName : data.guestName;
+        const otherUid = meHost ? data.guestUid : data.hostUid;
+        const otherHand = [...(data[otherKey] || [])];
+        const myHand = [...(data[myKey] || [])];
+        if (!otherUid) throw new Error("相手がまだ参加していません");
+        if (index < 0 || index >= otherHand.length) throw new Error("カードを選び直してください");
+        const drawn = otherHand.splice(index, 1)[0];
+        myHand.push(drawn);
+        const paired = removeOldMaidPairs(myHand);
+        const patch = {
+          [myKey]: shuffleCards(paired.hand),
+          [otherKey]: shuffleCards(otherHand),
+          [removedKey]: [...(data[removedKey] || []), ...paired.removed],
+          turnUid: otherUid,
+          updatedAt: serverTimestamp(),
+          log: [...(data.log || []).slice(-10), `${myName || "Player"} がカードを1枚引きました`]
+        };
+        const hostLen = meHost ? paired.hand.length : otherHand.length;
+        const guestLen = meHost ? otherHand.length : paired.hand.length;
+        if (hostLen === 0 || guestLen === 0) {
+          patch.status = "done";
+          patch.winnerUid = hostLen === 0 ? data.hostUid : data.guestUid;
+          patch.log = [...patch.log, `${hostLen === 0 ? data.hostName : data.guestName} の勝ち！`];
+        }
+        t.update(roomRef, patch);
+      });
+      setOldMaidSelectedIndex(null);
+    } catch (e) {
+      console.error(e);
+      showNotification(e?.message || "カードを引けませんでした");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const claimOldMaidReward = async () => {
+    if (!oldMaidRoom || oldMaidRoom.status !== "done") return;
+    const isHost = oldMaidRoom.hostUid === user.uid;
+    const isGuest = oldMaidRoom.guestUid === user.uid;
+    if (!isHost && !isGuest) return;
+    const claimKey = isHost ? "hostClaimed" : "guestClaimed";
+    if (oldMaidRoom[claimKey]) return showNotification("精算済みです");
+    setBusy(true);
+    try {
+      await runTransaction(db, async (t) => {
+        const roomRef = doc(db, ...gamePath("oldmaid_rooms", oldMaidRoom.id));
+        const userRef = doc(db, "artifacts", appId, "public", "data", "users", user.uid);
+        const roomSnap = await t.get(roomRef);
+        const userSnap = await t.get(userRef);
+        if (!roomSnap.exists() || !userSnap.exists()) throw new Error("データが見つかりません");
+        const data = roomSnap.data();
+        const betAmount = data.bet || 0;
+        const delta = data.winnerUid === user.uid ? betAmount : -betAmount;
+        const current = userSnap.data().wallet || 0;
+        if (current + delta < 0) throw new Error("残高不足");
+        t.update(userRef, { wallet: increment(delta) });
+        t.update(roomRef, { [claimKey]: true, updatedAt: serverTimestamp() });
+        const histRef = doc(collection(db, ...gamePath("pachinko_history")));
+        t.set(histRef, { uid: user.uid, gameName: "oldmaid_online", delta, bet: betAmount, result: data.winnerUid === user.uid ? "win" : "lose", roomId: data.id, createdAt: serverTimestamp() });
+      });
+      showNotification("ババ抜きの結果を精算しました");
+    } catch (e) {
+      console.error(e);
+      showNotification(e?.message || "精算に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+
+  const quizQuestions = [
+    { q: "ブラックジャックで目指す数字は？", a: ["17", "21", "31"], correct: 1 },
+    { q: "チンチロで一番強い役は？", a: ["ヒフミ", "シゴロ", "ピンゾロ"], correct: 2 },
+    { q: "ルーレットの0は何色？", a: ["赤", "黒", "緑"], correct: 2 },
+    { q: "ババ抜きで最後まで残ると困るカードは？", a: ["JOKER", "A", "7"], correct: 0 }
+  ];
+  const initMemoryGame = () => {
+    const icons = ["🍒", "🍋", "💎", "⭐", "🍀", "🔔"];
+    const cards = shuffleCards([...icons, ...icons].map((icon, i) => ({ id: `${icon}_${i}_${Math.random()}`, icon })));
+    setMemoryCards(cards);
+    setMemoryFlipped([]);
+    setMemoryMatched([]);
+    setMemoryMoves(0);
+    setGenericResult("カードを2枚めくってペアを探してください");
+  };
+  const flipMemoryCard = async (index) => {
+    if (busy) return;
+    if (!memoryCards.length) initMemoryGame();
+    if (memoryMatched.includes(index) || memoryFlipped.includes(index) || memoryFlipped.length >= 2) return;
+    const next = [...memoryFlipped, index];
+    setMemoryFlipped(next);
+    if (next.length === 2) {
+      setBusy(true);
+      setMemoryMoves((v) => v + 1);
+      const [a, b] = next;
+      if (memoryCards[a]?.icon === memoryCards[b]?.icon) {
+        const matched = [...memoryMatched, a, b];
+        setMemoryMatched(matched);
+        setMemoryFlipped([]);
+        if (matched.length === memoryCards.length) {
+          const reward = Math.max(40, 200 - memoryMoves * 10);
+          await directCoinReward(reward, "神経衰弱クリア");
+          setGenericResult(`クリア！ ${reward}コイン獲得`);
+        } else {
+          setGenericResult("ペア成功！");
+        }
+      } else {
+        setGenericResult("違うカードでした");
+        setTimeout(() => setMemoryFlipped([]), 650);
+      }
+      setTimeout(() => setBusy(false), 700);
+    }
+  };
+  const initTreasureGame = () => {
+    const rewards = [0, 0, 20, 30, 50, 80, 120, -20, -50];
+    setTreasureBoxes(shuffleCards(rewards.map((reward, i) => ({ id: `box_${i}_${Math.random()}`, reward }))));
+    setTreasureOpened([]);
+    setGenericResult("宝箱を選んでください。爆弾に注意！");
+  };
+  const openTreasureBox = async (index) => {
+    if (busy || treasureOpened.includes(index)) return;
+    if (!treasureBoxes.length) initTreasureGame();
+    setBusy(true);
+    try {
+      const box = treasureBoxes[index];
+      setTreasureOpened((prev) => [...prev, index]);
+      if (!box) return;
+      if (box.reward > 0) {
+        await directCoinReward(box.reward, "宝探し");
+        setGenericResult(`宝箱から ${box.reward} コイン！`);
+      } else if (box.reward < 0) {
+        await updateWallet(box.reward, "treasure_bomb", { bet: 0, payout: 0, result: "爆弾" });
+        setGenericResult(`爆弾！ ${box.reward} コイン`);
+      } else {
+        setGenericResult("空っぽでした");
+      }
+    } catch (e) {
+      console.error(e);
+      showNotification(e?.message || "宝箱を開けられませんでした");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const answerQuiz = async (choice) => {
+    if (busy) return;
+    const current = quizQuestions[quizIndex % quizQuestions.length];
+    const correct = choice === current.correct;
+    setBusy(true);
+    try {
+      if (correct) {
+        setQuizScore((v) => v + 1);
+        await directCoinReward(30, "クイズ正解");
+        setGenericResult("正解！ +30コイン");
+      } else {
+        setGenericResult(`不正解。正解は「${current.a[current.correct]}」`);
+      }
+      setTimeout(() => {
+        setQuizIndex((v) => (v + 1) % quizQuestions.length);
+        setBusy(false);
+      }, 650);
+    } catch (e) {
+      console.error(e);
+      setBusy(false);
+    }
+  };
+  const playJankenChoice = async (choice) => {
+    if (busy) return;
+    const hands = ["グー", "チョキ", "パー"];
+    const cpu = hands[Math.floor(Math.random() * hands.length)];
+    const win = (choice === "グー" && cpu === "チョキ") || (choice === "チョキ" && cpu === "パー") || (choice === "パー" && cpu === "グー");
+    const draw = choice === cpu;
+    setBusy(true);
+    try {
+      setJankenResult({ you: choice, cpu, result: draw ? "あいこ" : win ? "勝ち" : "負け" });
+      if (win) {
+        await directCoinReward(40, "じゃんけん勝利");
+      }
+      setGenericResult(draw ? "あいこ！もう一度" : win ? "勝ち！ +40コイン" : "負け…");
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const initFishingGame = () => {
+    const fish = [
+      { icon: "🐟", name: "小魚", reward: 20 },
+      { icon: "🐠", name: "熱帯魚", reward: 40 },
+      { icon: "🐡", name: "ふぐ", reward: 60 },
+      { icon: "🦈", name: "サメ", reward: 120 },
+      { icon: "🪨", name: "石", reward: 0 },
+      { icon: "👢", name: "長靴", reward: 0 }
+    ];
+    setFishingSpots(shuffleCards(fish));
+    setFishingResult("魚影を選んで釣ってください");
+  };
+  const fishAtSpot = async (index) => {
+    if (busy) return;
+    if (!fishingSpots.length) initFishingGame();
+    const catchItem = fishingSpots[index];
+    setBusy(true);
+    try {
+      if (catchItem?.reward > 0) {
+        await directCoinReward(catchItem.reward, `${catchItem.name}を釣った`);
+        setFishingResult(`${catchItem.icon} ${catchItem.name}！ +${catchItem.reward}コイン`);
+      } else {
+        setFishingResult(`${catchItem?.icon || "?"} ${catchItem?.name || "何もなし"}でした`);
+      }
+      setFishingSpots((prev) => prev.map((x, i) => i === index ? { icon: "🌊", name: "釣り済み", reward: 0 } : x));
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const mineCoin = async () => {
+    if (busy) return;
+    const next = Math.min(100, miningPower + 20 + Math.floor(Math.random() * 20));
+    setMiningPower(next);
+    if (next >= 100) {
+      setBusy(true);
+      try {
+        const reward = 80 + Math.floor(Math.random() * 80);
+        await directCoinReward(reward, "採掘成功");
+        setGenericResult(`採掘完了！ +${reward}コイン`);
+        setMiningPower(0);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setBusy(false);
+      }
+    } else {
+      setGenericResult(`採掘中... ${next}%`);
+    }
+  };
+
   const miniGameDefinitions = {
     memory: { title: "神経衰弱", emoji: "🧠", sub: "同じ絵柄を探す記憶ゲーム" },
-    oldmaid: { title: "ババ抜き", emoji: "🃏", sub: "ジョーカーを引かないカードゲーム" },
+    
     daifugo: { title: "大富豪", emoji: "👑", sub: "強いカードで上がりを狙うゲーム" },
     seven: { title: "7並べ", emoji: "7️⃣", sub: "7から順番に並べるゲーム" },
     uno: { title: "UNO風カードゲーム", emoji: "🌈", sub: "色と数字を合わせるゲーム" },
@@ -7161,7 +7552,7 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
       /* @__PURE__ */ jsx(GameCard, { id: "scratch", emoji: "🎫", title: "スクラッチ", sub: "3つの絵柄を削って一致を狙うミニゲーム。", tone: "from-pink-50 to-fuchsia-100" }),
       /* @__PURE__ */ jsx(GameCard, { id: "threepoker", emoji: "🂡", title: "3カードポーカー", sub: "3枚の役で倍率が決まるカードゲーム。", tone: "from-indigo-50 to-violet-100" }),
       /* @__PURE__ */ jsx(GameCard, { id: "memory", emoji: "🧠", title: "神経衰弱", sub: "同じ絵柄を探す記憶ゲーム。", tone: "from-emerald-50 to-teal-100" }),
-      /* @__PURE__ */ jsx(GameCard, { id: "oldmaid", emoji: "🃏", title: "ババ抜き", sub: "ジョーカーを引かないカードゲーム。", tone: "from-pink-50 to-rose-100" }),
+      /* @__PURE__ */ jsx(GameCard, { id: "oldmaid_online", emoji: "🃏", title: "オンラインババ抜き", sub: "ルームIDで友だちと1対1対戦。", tone: "from-pink-50 to-rose-100" }),
       /* @__PURE__ */ jsx(GameCard, { id: "daifugo", emoji: "👑", title: "大富豪", sub: "強いカードで上がりを狙うゲーム。", tone: "from-yellow-50 to-amber-100" }),
       /* @__PURE__ */ jsx(GameCard, { id: "seven", emoji: "7️⃣", title: "7並べ", sub: "7から順に並べるゲーム。", tone: "from-blue-50 to-sky-100" }),
       /* @__PURE__ */ jsx(GameCard, { id: "uno", emoji: "🌈", title: "UNO風カードゲーム", sub: "色と数字を合わせるカードゲーム。", tone: "from-red-50 to-orange-100" }),
@@ -7325,20 +7716,123 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
   ] });
 
 
-  if (genericGame && page === genericGame) return /* @__PURE__ */ jsxs("div", { className: "w-full h-full flex flex-col bg-emerald-50", children: [
-    /* @__PURE__ */ jsx(Header, { title: miniGameDefinitions[genericGame]?.title || "ミニゲーム", sub: miniGameDefinitions[genericGame]?.sub || "追加ゲーム" }),
-    /* @__PURE__ */ jsxs("div", { className: "flex-1 overflow-y-auto p-4", children: [
-      BetBox,
-      /* @__PURE__ */ jsxs("div", { className: "rounded-[36px] bg-gradient-to-br from-emerald-700 to-teal-600 p-6 shadow-2xl text-white text-center", children: [
-        /* @__PURE__ */ jsx("div", { className: "text-6xl mb-4", children: miniGameDefinitions[genericGame]?.emoji || "🎮" }),
-        /* @__PURE__ */ jsx("div", { className: "text-lg font-black mb-2", children: miniGameDefinitions[genericGame]?.title || "ミニゲーム" }),
-        /* @__PURE__ */ jsx("div", { className: "text-xs font-bold text-white/80 mb-5", children: genericResult || "ベットしてプレイしてください" }),
-        /* @__PURE__ */ jsx("button", { disabled: busy, onClick: playGenericMiniGame, className: "w-full py-4 rounded-2xl bg-white text-emerald-700 font-black disabled:bg-gray-300", children: busy ? "プレイ中..." : "プレイする" })
-      ] }),
-      /* @__PURE__ */ jsx(ResultBox, {}),
-      /* @__PURE__ */ jsx(HistoryBox, {})
-    ] })
-  ] });
+
+  if (page === "oldmaid_online") {
+    const isHost = oldMaidRoom?.hostUid === user.uid;
+    const isGuest = oldMaidRoom?.guestUid === user.uid;
+    const myHand = isHost ? oldMaidRoom?.hostHand || [] : oldMaidRoom?.guestHand || [];
+    const otherHand = isHost ? oldMaidRoom?.guestHand || [] : oldMaidRoom?.hostHand || [];
+    const myName = isHost ? oldMaidRoom?.hostName : oldMaidRoom?.guestName;
+    const otherName = isHost ? oldMaidRoom?.guestName : oldMaidRoom?.hostName;
+    const myTurn = oldMaidRoom?.turnUid === user.uid;
+    return /* @__PURE__ */ jsxs("div", { className: "w-full h-full flex flex-col bg-pink-50", children: [
+      /* @__PURE__ */ jsx(Header, { title: "オンラインババ抜き", sub: "ルームIDで友だちと1対1対戦" }),
+      /* @__PURE__ */ jsxs("div", { className: "flex-1 overflow-y-auto p-4 space-y-4", children: [
+        /* @__PURE__ */ jsxs("div", { className: "bg-white rounded-3xl p-4 shadow border", children: [
+          /* @__PURE__ */ jsx("div", { className: "text-xs font-black text-gray-500 mb-2", children: "ルームID" }),
+          /* @__PURE__ */ jsxs("div", { className: "flex gap-2", children: [
+            /* @__PURE__ */ jsx("input", { value: oldMaidRoomIdInput || roomIdInput, onChange: (e) => { setOldMaidRoomIdInput(e.target.value); setRoomIdInput(e.target.value); }, className: "min-w-0 flex-1 bg-gray-50 border rounded-2xl px-4 py-3 font-bold outline-none", placeholder: "ルームID" }),
+            /* @__PURE__ */ jsx("button", { onClick: joinOldMaidRoom, disabled: busy, className: "px-4 rounded-2xl bg-gray-900 text-white font-black disabled:bg-gray-300", children: "参加/復帰" })
+          ] }),
+          oldMaidRoom?.id && /* @__PURE__ */ jsxs("div", { className: "mt-2 flex gap-2 items-center", children: [
+            /* @__PURE__ */ jsx("div", { className: "text-xs font-bold text-gray-500 break-all flex-1", children: oldMaidRoom.id }),
+            /* @__PURE__ */ jsx("button", { onClick: () => navigator.clipboard?.writeText(oldMaidRoom.id), className: "px-3 py-1 rounded-full bg-pink-50 text-pink-600 text-xs font-black", children: "コピー" })
+          ] })
+        ] }),
+        !oldMaidRoom && /* @__PURE__ */ jsxs("div", { className: "bg-white rounded-3xl p-4 shadow border space-y-3", children: [
+          /* @__PURE__ */ jsx("div", { className: "font-black text-gray-900", children: "ルームを作る" }),
+          /* @__PURE__ */ jsx("input", { value: oldMaidBet, onChange: (e) => setOldMaidBet(e.target.value), inputMode: "numeric", className: "w-full bg-gray-50 border rounded-2xl px-4 py-3 font-black outline-none", placeholder: "ベット額" }),
+          /* @__PURE__ */ jsx("button", { onClick: createOldMaidRoom, disabled: busy, className: "w-full py-4 rounded-2xl bg-pink-500 text-white font-black disabled:bg-gray-300", children: "ババ抜きルーム作成" })
+        ] }),
+        oldMaidRoom && /* @__PURE__ */ jsxs("div", { className: "bg-white rounded-[32px] p-5 shadow border", children: [
+          /* @__PURE__ */ jsxs("div", { className: "grid grid-cols-2 gap-2 mb-4", children: [
+            /* @__PURE__ */ jsxs("div", { className: "rounded-2xl bg-pink-50 p-3 border border-pink-100", children: [
+              /* @__PURE__ */ jsx("div", { className: "text-[10px] font-black text-pink-500", children: "YOU" }),
+              /* @__PURE__ */ jsx("div", { className: "font-black truncate", children: myName || "あなた" }),
+              /* @__PURE__ */ jsxs("div", { className: "text-xs font-bold text-gray-500", children: [myHand.length, "枚"] })
+            ] }),
+            /* @__PURE__ */ jsxs("div", { className: "rounded-2xl bg-gray-50 p-3 border", children: [
+              /* @__PURE__ */ jsx("div", { className: "text-[10px] font-black text-gray-400", children: "OPPONENT" }),
+              /* @__PURE__ */ jsx("div", { className: "font-black truncate", children: otherName || "参加待ち" }),
+              /* @__PURE__ */ jsxs("div", { className: "text-xs font-bold text-gray-500", children: [otherHand.length, "枚"] })
+            ] })
+          ] }),
+          /* @__PURE__ */ jsx("div", { className: `rounded-2xl p-3 mb-4 text-center text-sm font-black ${myTurn ? "bg-green-50 text-green-700" : "bg-gray-50 text-gray-500"}`, children: oldMaidRoom.status === "waiting" ? "相手の参加待ち" : oldMaidRoom.status === "done" ? "対戦終了" : myTurn ? "あなたの番：相手のカードを1枚選んでください" : "相手の番です" }),
+          /* @__PURE__ */ jsx("div", { className: "mb-4", children: /* @__PURE__ */ jsx("div", { className: "flex gap-2 flex-wrap justify-center", children: otherHand.map((c, i) => /* @__PURE__ */ jsx("button", { disabled: !myTurn || busy || oldMaidRoom.status !== "playing", onClick: () => drawOldMaidCard(i), className: "w-12 h-16 rounded-xl bg-gradient-to-br from-pink-500 to-red-500 text-white shadow font-black disabled:opacity-50", children: "?" }, `${i}_${c.id}`)) }) }),
+          /* @__PURE__ */ jsxs("div", { className: "rounded-2xl bg-gray-50 p-3", children: [
+            /* @__PURE__ */ jsx("div", { className: "text-xs font-black text-gray-500 mb-2", children: "自分の手札" }),
+            /* @__PURE__ */ jsx("div", { className: "flex gap-2 flex-wrap", children: myHand.map((c, i) => /* @__PURE__ */ jsx("div", { className: `w-12 h-16 rounded-xl border bg-white flex items-center justify-center text-sm font-black ${cardColor(c)}`, children: c.rank === "JOKER" ? "🃏" : cardText(c) }, `${i}_${c.id}`)) })
+          ] }),
+          oldMaidRoom.status === "done" && /* @__PURE__ */ jsxs("div", { className: "mt-4 space-y-2", children: [
+            /* @__PURE__ */ jsx("div", { className: "rounded-2xl bg-yellow-50 border border-yellow-100 p-4 text-center font-black text-yellow-800", children: oldMaidRoom.winnerUid === user.uid ? "あなたの勝ち！" : "あなたの負け…" }),
+            /* @__PURE__ */ jsx("button", { onClick: claimOldMaidReward, disabled: busy, className: "w-full py-4 rounded-2xl bg-yellow-500 text-white font-black disabled:bg-gray-300", children: "結果を精算" })
+          ] }),
+          /* @__PURE__ */ jsx("div", { className: "mt-4 space-y-1", children: (oldMaidRoom.log || []).slice(-5).map((l, i) => /* @__PURE__ */ jsx("div", { className: "text-xs font-bold text-gray-500 bg-gray-50 rounded-xl px-3 py-2", children: l }, i)) })
+        ] })
+      ] })
+    ] });
+  }
+
+  if (genericGame && page === genericGame) {
+    const def = miniGameDefinitions[genericGame];
+    if (genericGame === "memory" && memoryCards.length === 0) setTimeout(initMemoryGame, 0);
+    if (genericGame === "treasure" && treasureBoxes.length === 0) setTimeout(initTreasureGame, 0);
+    if (genericGame === "fishing" && fishingSpots.length === 0) setTimeout(initFishingGame, 0);
+    const currentQuiz = quizQuestions[quizIndex % quizQuestions.length];
+    return /* @__PURE__ */ jsxs("div", { className: "w-full h-full flex flex-col bg-emerald-50", children: [
+      /* @__PURE__ */ jsx(Header, { title: def?.title || "ミニゲーム", sub: def?.sub || "追加ゲーム" }),
+      /* @__PURE__ */ jsxs("div", { className: "flex-1 overflow-y-auto p-4", children: [
+        !["memory", "treasure", "quiz", "janken", "fishing", "idle"].includes(genericGame) && BetBox,
+        genericGame === "memory" && /* @__PURE__ */ jsxs("div", { className: "rounded-[36px] bg-gradient-to-br from-emerald-700 to-teal-600 p-5 shadow-2xl text-white", children: [
+          /* @__PURE__ */ jsxs("div", { className: "flex justify-between items-center mb-4", children: [
+            /* @__PURE__ */ jsx("div", { className: "font-black", children: "ペアを全部見つけよう" }),
+            /* @__PURE__ */ jsxs("div", { className: "text-xs font-bold", children: ["手数 ", memoryMoves] })
+          ] }),
+          /* @__PURE__ */ jsx("div", { className: "grid grid-cols-4 gap-2", children: memoryCards.map((c, i) => {
+            const open = memoryFlipped.includes(i) || memoryMatched.includes(i);
+            return /* @__PURE__ */ jsx("button", { onClick: () => flipMemoryCard(i), disabled: open && memoryMatched.includes(i), className: `h-20 rounded-2xl border shadow-lg text-3xl font-black ${open ? "bg-white text-gray-900" : "bg-emerald-950 text-white"}`, children: open ? c.icon : "?" }, c.id);
+          }) }),
+          /* @__PURE__ */ jsx("button", { onClick: initMemoryGame, className: "mt-4 w-full py-3 rounded-2xl bg-white text-emerald-700 font-black", children: "リセット" })
+        ] }),
+        genericGame === "treasure" && /* @__PURE__ */ jsxs("div", { className: "rounded-[36px] bg-gradient-to-br from-cyan-700 to-blue-700 p-5 shadow-2xl text-white", children: [
+          /* @__PURE__ */ jsx("div", { className: "font-black mb-4 text-center", children: "宝箱を選んでください" }),
+          /* @__PURE__ */ jsx("div", { className: "grid grid-cols-3 gap-3", children: treasureBoxes.map((b, i) => /* @__PURE__ */ jsx("button", { onClick: () => openTreasureBox(i), disabled: treasureOpened.includes(i), className: "h-24 rounded-3xl bg-white text-gray-900 shadow-xl text-4xl font-black disabled:opacity-80", children: treasureOpened.includes(i) ? b.reward > 0 ? `+${b.reward}` : b.reward < 0 ? "💣" : "空" : "🎁" }, b.id)) }),
+          /* @__PURE__ */ jsx("button", { onClick: initTreasureGame, className: "mt-4 w-full py-3 rounded-2xl bg-white text-blue-700 font-black", children: "宝箱を並べ直す" })
+        ] }),
+        genericGame === "quiz" && /* @__PURE__ */ jsxs("div", { className: "rounded-[36px] bg-gradient-to-br from-slate-900 to-gray-700 p-5 shadow-2xl text-white", children: [
+          /* @__PURE__ */ jsxs("div", { className: "text-xs font-bold text-gray-300 mb-2", children: ["スコア ", quizScore] }),
+          /* @__PURE__ */ jsx("div", { className: "text-lg font-black mb-4", children: currentQuiz.q }),
+          /* @__PURE__ */ jsx("div", { className: "grid gap-2", children: currentQuiz.a.map((a, i) => /* @__PURE__ */ jsx("button", { onClick: () => answerQuiz(i), disabled: busy, className: "py-4 rounded-2xl bg-white text-gray-900 font-black disabled:bg-gray-300", children: a }, a)) })
+        ] }),
+        genericGame === "janken" && /* @__PURE__ */ jsxs("div", { className: "rounded-[36px] bg-gradient-to-br from-orange-700 to-red-600 p-5 shadow-2xl text-white text-center", children: [
+          /* @__PURE__ */ jsx("div", { className: "font-black mb-4", children: "手を選んで勝負！" }),
+          /* @__PURE__ */ jsxs("div", { className: "grid grid-cols-3 gap-2", children: ["グー", "チョキ", "パー"].map((h) => /* @__PURE__ */ jsx("button", { onClick: () => playJankenChoice(h), className: "py-5 rounded-2xl bg-white text-red-700 font-black text-lg", children: h }, h)) }),
+          jankenResult && /* @__PURE__ */ jsxs("div", { className: "mt-4 rounded-2xl bg-white/20 p-3 font-black", children: ["あなた: ", jankenResult.you, " / 相手: ", jankenResult.cpu, " / ", jankenResult.result] })
+        ] }),
+        genericGame === "fishing" && /* @__PURE__ */ jsxs("div", { className: "rounded-[36px] bg-gradient-to-br from-blue-700 to-cyan-600 p-5 shadow-2xl text-white text-center", children: [
+          /* @__PURE__ */ jsx("div", { className: "font-black mb-4", children: "魚影を選んで釣る" }),
+          /* @__PURE__ */ jsx("div", { className: "grid grid-cols-3 gap-3", children: fishingSpots.map((f, i) => /* @__PURE__ */ jsx("button", { onClick: () => fishAtSpot(i), className: "h-24 rounded-3xl bg-white text-blue-700 shadow-xl text-4xl font-black", children: f.icon === "🌊" ? "🌊" : "〰️" }, `${f.name}_${i}`)) }),
+          /* @__PURE__ */ jsx("div", { className: "mt-4 rounded-2xl bg-white/20 p-3 text-sm font-black", children: fishingResult || "魚影を選んでください" }),
+          /* @__PURE__ */ jsx("button", { onClick: initFishingGame, className: "mt-3 w-full py-3 rounded-2xl bg-white text-blue-700 font-black", children: "釣り場を変える" })
+        ] }),
+        genericGame === "idle" && /* @__PURE__ */ jsxs("div", { className: "rounded-[36px] bg-gradient-to-br from-stone-800 to-gray-600 p-5 shadow-2xl text-white text-center", children: [
+          /* @__PURE__ */ jsx("div", { className: "text-6xl mb-4", children: "⛏️" }),
+          /* @__PURE__ */ jsx("div", { className: "w-full h-5 rounded-full bg-white/20 overflow-hidden mb-4", children: /* @__PURE__ */ jsx("div", { className: "h-full bg-yellow-400 transition-all", style: { width: `${miningPower}%` } }) }),
+          /* @__PURE__ */ jsxs("div", { className: "font-black mb-4", children: ["採掘率 ", miningPower, "%"] }),
+          /* @__PURE__ */ jsx("button", { onClick: mineCoin, disabled: busy, className: "w-full py-4 rounded-2xl bg-yellow-400 text-stone-900 font-black disabled:bg-gray-300", children: "採掘する" })
+        ] }),
+        !["memory", "treasure", "quiz", "janken", "fishing", "idle"].includes(genericGame) && /* @__PURE__ */ jsxs("div", { className: "rounded-[36px] bg-gradient-to-br from-emerald-700 to-teal-600 p-6 shadow-2xl text-white text-center", children: [
+          /* @__PURE__ */ jsx("div", { className: "text-6xl mb-4", children: def?.emoji || "🎮" }),
+          /* @__PURE__ */ jsx("div", { className: "text-lg font-black mb-2", children: def?.title || "ミニゲーム" }),
+          /* @__PURE__ */ jsx("div", { className: "text-xs font-bold text-white/80 mb-5", children: genericResult || "ベットしてプレイしてください" }),
+          /* @__PURE__ */ jsx("button", { disabled: busy, onClick: playGenericMiniGame, className: "w-full py-4 rounded-2xl bg-white text-emerald-700 font-black disabled:bg-gray-300", children: busy ? "プレイ中..." : "プレイする" })
+        ] }),
+        /* @__PURE__ */ jsx("div", { className: "mt-4 rounded-2xl bg-white border p-3 text-sm font-black text-gray-700", children: genericResult || "結果がここに表示されます" }),
+        /* @__PURE__ */ jsx(ResultBox, {}),
+        /* @__PURE__ */ jsx(HistoryBox, {})
+      ] })
+    ] });
+  }
 
   return /* @__PURE__ */ jsxs("div", { className: "w-full h-full flex flex-col bg-blue-50", children: [
     /* @__PURE__ */ jsx(Header, { title: "オンライン対戦", sub: "1対1 / ルームID方式 / アプリ内コイン専用" }),
@@ -7348,15 +7842,17 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
         /* @__PURE__ */ jsx("div", { className: "text-xs font-black text-gray-500 mb-2", children: "対戦ゲーム" }),
         /* @__PURE__ */ jsxs("div", { className: "grid grid-cols-2 gap-2", children: [
           /* @__PURE__ */ jsx("button", { onClick: () => setOnlineGame("chinchiro"), className: `py-3 rounded-2xl font-black ${onlineGame === "chinchiro" ? "bg-purple-500 text-white" : "bg-gray-100 text-gray-600"}`, children: "チンチロ" }),
-          /* @__PURE__ */ jsx("button", { onClick: () => setOnlineGame("highlow"), className: `py-3 rounded-2xl font-black ${onlineGame === "highlow" ? "bg-green-500 text-white" : "bg-gray-100 text-gray-600"}`, children: "ハイ＆ロー" })
+          /* @__PURE__ */ jsx("button", { onClick: () => setOnlineGame("highlow"), className: `py-3 rounded-2xl font-black ${onlineGame === "highlow" ? "bg-green-500 text-white" : "bg-gray-100 text-gray-600"}`, children: "ハイ＆ロー" }),
+          /* @__PURE__ */ jsx("button", { onClick: () => setOnlineGame("oldmaid"), className: `py-3 rounded-2xl font-black ${onlineGame === "oldmaid" ? "bg-pink-500 text-white" : "bg-gray-100 text-gray-600"}`, children: "ババ抜き" })
         ] }),
-        /* @__PURE__ */ jsx("button", { disabled: busy, onClick: createBattleRoom, className: "mt-3 w-full py-4 rounded-2xl bg-blue-500 hover:bg-blue-600 text-white font-black disabled:bg-gray-300", children: "ルームを作成" }),
+        /* @__PURE__ */ jsx("button", { disabled: busy, onClick: onlineGame === "oldmaid" ? createOldMaidRoom : createBattleRoom, className: "mt-3 w-full py-4 rounded-2xl bg-blue-500 hover:bg-blue-600 text-white font-black disabled:bg-gray-300", children: onlineGame === "oldmaid" ? "ババ抜きルームを作成" : "ルームを作成" }),
         /* @__PURE__ */ jsxs("div", { className: "mt-3 flex gap-2", children: [
           /* @__PURE__ */ jsx("input", { value: roomIdInput, onChange: (e) => {
             setRoomIdInput(e.target.value);
+            setOldMaidRoomIdInput(e.target.value);
             try { localStorage.setItem(ONLINE_ROOM_STORAGE_KEY, e.target.value.trim()); } catch (err) {}
           }, className: "min-w-0 flex-1 bg-gray-50 border rounded-2xl px-4 py-3 font-bold outline-none", placeholder: "ルームIDを入力" }),
-          /* @__PURE__ */ jsx("button", { disabled: busy, onClick: joinBattleRoom, className: "px-4 rounded-2xl bg-gray-900 text-white font-black disabled:bg-gray-300", children: "参加/復帰" })
+          /* @__PURE__ */ jsx("button", { disabled: busy, onClick: onlineGame === "oldmaid" ? joinOldMaidRoom : joinBattleRoom, className: "px-4 rounded-2xl bg-gray-900 text-white font-black disabled:bg-gray-300", children: onlineGame === "oldmaid" ? "ババ抜き参加" : "参加/復帰" })
         ] }),
         /* @__PURE__ */ jsx("div", { className: "mt-2 text-[11px] font-bold text-gray-500 leading-relaxed", children: "ページ移動後も、同じルームIDを入力すれば開催者・参加者ともに対戦ルームへ復帰できます。" })
       ] }),
