@@ -6492,6 +6492,19 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
   const [roomData, setRoomData] = useState(null);
   const [onlineDice, setOnlineDice] = useState([1, 1, 1]);
   const [onlineCard, setOnlineCard] = useState(null);
+  const [dailyBonusDate, setDailyBonusDate] = useState(() => {
+    try { return localStorage.getItem("coin_daily_bonus_date_v1") || ""; } catch (e) { return ""; }
+  });
+  const [missionState, setMissionState] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("coin_missions_v1") || "{}"); } catch (e) { return {}; }
+  });
+  const [ownedItems, setOwnedItems] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("coin_owned_items_v1") || "[]"); } catch (e) { return []; }
+  });
+  const [activeTitle, setActiveTitle] = useState(() => {
+    try { return localStorage.getItem("coin_active_title_v1") || "ビギナー"; } catch (e) { return "ビギナー"; }
+  });
+  const [lastGacha, setLastGacha] = useState(null);
   const [rouletteNumber, setRouletteNumber] = useState(null);
   const [rouletteChoice, setRouletteChoice] = useState("red");
   const [diceHighLow, setDiceHighLow] = useState([1, 1]);
@@ -6573,10 +6586,95 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
       t.set(histRef, { uid: user.uid, gameName, delta, bet: extra.bet || 0, payout: extra.payout || 0, result: extra.result || "", detail: extra, createdAt: serverTimestamp() });
     });
   };
+
+  const todayKey = () => new Date().toISOString().slice(0, 10);
+  const directCoinReward = async (amount, label, extra = {}) => {
+    if (!amount || amount <= 0) return;
+    await updateWallet(amount, "bonus", { bet: 0, payout: amount, result: label, ...extra });
+    showNotification(`${label} +${amount}コイン`);
+  };
+  const claimDailyBonus = async () => {
+    const k = todayKey();
+    if (dailyBonusDate === k) return showNotification("今日のログインボーナスは受け取り済みです");
+    const amount = 100;
+    try {
+      await directCoinReward(amount, "ログインボーナス");
+      setDailyBonusDate(k);
+      localStorage.setItem("coin_daily_bonus_date_v1", k);
+    } catch (e) {
+      console.error(e);
+      showNotification(e?.message || "ログインボーナスに失敗しました");
+    }
+  };
+  const addMissionProgress = (key, amount = 1) => {
+    const next = { ...missionState, [key]: (missionState[key] || 0) + amount };
+    setMissionState(next);
+    localStorage.setItem("coin_missions_v1", JSON.stringify(next));
+  };
+  const claimMissionReward = async (key, need, reward, label) => {
+    if ((missionState[key] || 0) < need) return showNotification("まだ達成していません");
+    if (missionState[`${key}_claimed`]) return showNotification("受け取り済みです");
+    try {
+      await directCoinReward(reward, label);
+      const next = { ...missionState, [`${key}_claimed`]: true };
+      setMissionState(next);
+      localStorage.setItem("coin_missions_v1", JSON.stringify(next));
+    } catch (e) {
+      console.error(e);
+      showNotification(e?.message || "報酬受け取りに失敗しました");
+    }
+  };
+  const playGacha = async () => {
+    const cost = 50;
+    if ((profile?.wallet || 0) < cost) return showNotification("コイン残高が足りません");
+    const pool = [
+      { name: "ノーマル背景", rarity: "N", reward: 0 },
+      { name: "ラッキー称号", rarity: "R", reward: 20 },
+      { name: "ゴールド称号", rarity: "SR", reward: 80 },
+      { name: "レジェンド称号", rarity: "UR", reward: 250 }
+    ];
+    const r = Math.random();
+    const item = r < 0.62 ? pool[0] : r < 0.88 ? pool[1] : r < 0.98 ? pool[2] : pool[3];
+    try {
+      await updateWallet(item.reward - cost, "gacha", { bet: cost, payout: item.reward, result: `${item.rarity} ${item.name}` });
+      const nextItems = Array.from(new Set([...ownedItems, item.name]));
+      setOwnedItems(nextItems);
+      localStorage.setItem("coin_owned_items_v1", JSON.stringify(nextItems));
+      setLastGacha(item);
+      addMissionProgress("gacha", 1);
+      showNotification(`ガチャ結果：${item.rarity} ${item.name}`);
+    } catch (e) {
+      console.error(e);
+      showNotification(e?.message || "ガチャに失敗しました");
+    }
+  };
+  const buyShopItem = async (name, cost) => {
+    if (ownedItems.includes(name)) return showNotification("すでに所持しています");
+    if ((profile?.wallet || 0) < cost) return showNotification("コイン残高が足りません");
+    try {
+      await updateWallet(-cost, "shop", { bet: cost, payout: 0, result: name });
+      const nextItems = [...ownedItems, name];
+      setOwnedItems(nextItems);
+      localStorage.setItem("coin_owned_items_v1", JSON.stringify(nextItems));
+      showNotification(`${name}を購入しました`);
+    } catch (e) {
+      console.error(e);
+      showNotification(e?.message || "購入に失敗しました");
+    }
+  };
+  const setTitle = (title) => {
+    if (!ownedItems.includes(title) && !["ビギナー", "勝負師", "配信者"].includes(title)) return showNotification("まだ所持していません");
+    setActiveTitle(title);
+    localStorage.setItem("coin_active_title_v1", title);
+    showNotification(`称号を「${title}」に変更しました`);
+  };
+
   const settleInstantGame = async (gameName, b, mult, resultText, extra = {}) => {
     const payout = Math.floor(b * mult);
     const delta = payout - b;
     await updateWallet(delta, gameName, { bet: b, mult, payout, result: resultText, ...extra });
+    addMissionProgress("play", 1);
+    if (delta > 0) addMissionProgress("win", 1);
     const result = { id: `${Date.now()}_${Math.random()}`, gameName, bet: b, mult, payout, delta, resultText, ...extra };
     setLastResult(result);
     setGameHistory((prev) => [result, ...prev].slice(0, 12));
@@ -7088,6 +7186,52 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
   if (page === "menu") return /* @__PURE__ */ jsxs("div", { className: "w-full h-full flex flex-col bg-gray-50", children: [
     /* @__PURE__ */ jsx(Header, { title: "コインゲーム広場", sub: "ゲームごとにページ分け / オンライン対戦対応 / アプリ内コイン専用" }),
     /* @__PURE__ */ jsxs("div", { className: "flex-1 overflow-y-auto p-4 grid grid-cols-1 sm:grid-cols-2 gap-4", children: [
+
+      /* @__PURE__ */ jsxs("div", { className: "sm:col-span-2 rounded-[32px] bg-white border shadow p-4", children: [
+        /* @__PURE__ */ jsxs("div", { className: "flex items-center gap-3 mb-3", children: [
+          /* @__PURE__ */ jsx("div", { className: "w-12 h-12 rounded-2xl bg-yellow-50 flex items-center justify-center text-2xl", children: "🎁" }),
+          /* @__PURE__ */ jsxs("div", { className: "flex-1", children: [
+            /* @__PURE__ */ jsx("div", { className: "font-black text-gray-900", children: "ボーナス・ミッション・ガチャ" }),
+            /* @__PURE__ */ jsxs("div", { className: "text-xs font-bold text-gray-500", children: [
+              "現在の称号：",
+              activeTitle,
+              " / 所持アイテム ",
+              ownedItems.length,
+              "個"
+            ] })
+          ] })
+        ] }),
+        /* @__PURE__ */ jsxs("div", { className: "grid grid-cols-2 sm:grid-cols-4 gap-2", children: [
+          /* @__PURE__ */ jsx("button", { onClick: claimDailyBonus, className: "py-3 rounded-2xl bg-yellow-400 text-yellow-950 font-black text-sm", children: dailyBonusDate === todayKey() ? "ログボ済" : "ログボ+100" }),
+          /* @__PURE__ */ jsx("button", { onClick: playGacha, className: "py-3 rounded-2xl bg-purple-500 text-white font-black text-sm", children: "ガチャ50" }),
+          /* @__PURE__ */ jsx("button", { onClick: () => buyShopItem("勝負師", 300), className: "py-3 rounded-2xl bg-gray-900 text-white font-black text-sm", children: "称号購入" }),
+          /* @__PURE__ */ jsx("button", { onClick: () => setTitle(ownedItems.includes("勝負師") ? "勝負師" : "ビギナー"), className: "py-3 rounded-2xl bg-blue-500 text-white font-black text-sm", children: "称号変更" })
+        ] }),
+        lastGacha && /* @__PURE__ */ jsxs("div", { className: "mt-3 rounded-2xl bg-purple-50 text-purple-700 px-3 py-2 text-xs font-black", children: [
+          "直近ガチャ：",
+          lastGacha.rarity,
+          " ",
+          lastGacha.name
+        ] }),
+        /* @__PURE__ */ jsxs("div", { className: "mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2", children: [
+          /* @__PURE__ */ jsxs("div", { className: "rounded-2xl bg-gray-50 border p-3", children: [
+            /* @__PURE__ */ jsx("div", { className: "text-xs font-black text-gray-500", children: "ミッション：3回遊ぶ" }),
+            /* @__PURE__ */ jsxs("div", { className: "text-sm font-black text-gray-900", children: [missionState.play || 0, " / 3"] }),
+            /* @__PURE__ */ jsx("button", { onClick: () => claimMissionReward("play", 3, 150, "ミッション報酬"), className: "mt-2 w-full py-2 rounded-xl bg-green-500 text-white text-xs font-black", children: missionState.play_claimed ? "受取済" : "受け取る" })
+          ] }),
+          /* @__PURE__ */ jsxs("div", { className: "rounded-2xl bg-gray-50 border p-3", children: [
+            /* @__PURE__ */ jsx("div", { className: "text-xs font-black text-gray-500", children: "ミッション：1回勝つ" }),
+            /* @__PURE__ */ jsxs("div", { className: "text-sm font-black text-gray-900", children: [missionState.win || 0, " / 1"] }),
+            /* @__PURE__ */ jsx("button", { onClick: () => claimMissionReward("win", 1, 200, "勝利ミッション報酬"), className: "mt-2 w-full py-2 rounded-xl bg-green-500 text-white text-xs font-black", children: missionState.win_claimed ? "受取済" : "受け取る" })
+          ] }),
+          /* @__PURE__ */ jsxs("div", { className: "rounded-2xl bg-gray-50 border p-3", children: [
+            /* @__PURE__ */ jsx("div", { className: "text-xs font-black text-gray-500", children: "ミッション：ガチャ1回" }),
+            /* @__PURE__ */ jsxs("div", { className: "text-sm font-black text-gray-900", children: [missionState.gacha || 0, " / 1"] }),
+            /* @__PURE__ */ jsx("button", { onClick: () => claimMissionReward("gacha", 1, 100, "ガチャミッション報酬"), className: "mt-2 w-full py-2 rounded-xl bg-green-500 text-white text-xs font-black", children: missionState.gacha_claimed ? "受取済" : "受け取る" })
+          ] })
+        ] })
+      ] }),
+
       /* @__PURE__ */ jsx(GameCard, { id: "pachinko", emoji: "🎰", title: "リアルパチンコ", sub: "球の演出・倍率抽選。従来のパチンコを見た目強化。", tone: "from-yellow-50 to-orange-100" }),
       /* @__PURE__ */ jsx(GameCard, { id: "highlow", emoji: "🃏", title: "ハイ＆ロー", sub: "親カードより大きいか小さいかを予想。", tone: "from-green-50 to-emerald-100" }),
       /* @__PURE__ */ jsx(GameCard, { id: "blackjack", emoji: "♠️", title: "ブラックジャック", sub: "21に近づける定番カードゲーム。", tone: "from-slate-50 to-gray-200" }),
@@ -7960,78 +8104,6 @@ const CoinArcadeView = ({ onBack }) => {
 };
 // ===================== /Coin Arcade =====================
 
-
-/* ========================= v21 Feature Mega Pack: 100 functions ========================= */
-function FeatureMegaPack() {
-  const [open, setOpen] = React.useState(false);
-  const [cat, setCat] = React.useState("チャット");
-  const [q, setQ] = React.useState("");
-  const [enabled, setEnabled] = React.useState(() => { try { return JSON.parse(localStorage.getItem("fm_enabled") || "{}"); } catch(e) { return {}; } });
-  const [memo, setMemo] = React.useState(() => { try { return JSON.parse(localStorage.getItem("fm_memo") || "{}"); } catch(e) { return {}; } });
-  const [out, setOut] = React.useState("");
-  const groups = {"チャット": ["既読・未読の細かい表示", "メッセージ検索", "ピン留めメッセージ", "お気に入りメッセージ保存", "メッセージ予約送信", "メッセージ編集", "メッセージ送信取り消し", "ボイスメッセージ", "写真・動画アルバム", "ファイル送信", "位置情報共有", "連絡先カード送信", "グループ招待リンク", "グループ内投票", "グループ内予定表", "友だちメモ機能", "友だちタグ分類", "友だちお気に入り固定", "ブロックリスト管理", "誕生日通知"], "SNS": ["VOOM投稿のいいね", "投稿コメント", "投稿保存", "投稿共有", "投稿の公開範囲設定", "24時間で消えるストーリー", "ストーリー足あと", "ハッシュタグ検索", "人気投稿ランキング", "おすすめ投稿表示", "投稿テンプレート", "写真フィルター", "動画トリミング", "スタンプ付き投稿", "音楽付き投稿", "投稿予約", "下書き保存", "リポスト", "コメント固定", "NGコメント自動非表示"], "配信": ["配信タイトル設定", "配信カテゴリ設定", "視聴者数表示", "配信開始通知", "配信終了通知", "コメント固定", "コメント読み上げ", "ハート・いいね連打", "ギフト送信", "配信者ランキング", "視聴者一覧", "視聴者を退出させる機能", "コメントNGワード", "配信ルーム招待リンク", "配信サムネイル設定", "配信前待機画面", "配信中テロップ", "画面共有の範囲選択", "配信録画保存", "アーカイブ視聴"], "ゲーム": ["ログインボーナス", "デイリーミッション", "ウィークリーミッション", "コインランキング", "勝率ランキング", "連勝ランキング", "ガチャ機能", "アイテムショップ", "アバター購入", "背景購入", "スタンプ購入", "称号システム", "レベルアップ機能", "経験値システム", "ルーレット無料券", "ゲームチケット", "フレンド対戦招待", "ランダムマッチ", "観戦モード", "対戦履歴"], "追加ゲーム": ["神経衰弱", "ババ抜き", "大富豪", "7並べ", "ポーカー", "UNO風カードゲーム", "ビンゴ", "すごろく", "宝探しゲーム", "クイズバトル", "じゃんけん対戦", "早押しクイズ", "タイピングゲーム", "釣りゲーム", "農園ゲーム", "ペット育成ゲーム", "放置コイン採掘", "おみくじ", "福引き", "カジノ風ミニゲームセンター"]};
-  const all = Object.entries(groups).flatMap(([category, items]) => items.map((title, i) => ({ id: category + "_" + i + "_" + title, category, title })));
-  const visible = all.filter(f => f.category === cat && (!q || f.title.toLowerCase().includes(q.toLowerCase())));
-  const saveEnabled = (id) => { const next = {...enabled, [id]: !enabled[id]}; setEnabled(next); localStorage.setItem("fm_enabled", JSON.stringify(next)); };
-  const saveMemo = (id) => { const v = prompt("メモを入力", memo[id] || ""); if (v === null) return; const next = {...memo, [id]: v}; setMemo(next); localStorage.setItem("fm_memo", JSON.stringify(next)); };
-  const run = (title) => {
-    if (title.includes("ログインボーナス")) {
-      const k = new Date().toISOString().slice(0,10);
-      if (localStorage.getItem("fm_daily") === k) return setOut("今日のログインボーナスは受け取り済みです");
-      localStorage.setItem("fm_daily", k); return setOut("ログインボーナスを受け取りました（UIデモ）");
-    }
-    if (title.includes("招待") || title.includes("リンク")) return setOut("招待コード: " + Math.random().toString(36).slice(2,10).toUpperCase());
-    if (title.includes("おみくじ")) return setOut("おみくじ: " + ["大吉","中吉","小吉","吉","末吉"][Math.floor(Math.random()*5)]);
-    if (title.includes("ガチャ") || title.includes("福引き")) return setOut("抽選結果: " + ["ノーマル","レア","SR","UR"][Math.floor(Math.random()*4)]);
-    if (title.includes("検索")) return setOut("検索機能の入口を開きました。");
-    setOut(title + " を開きました。設定・メモ・ON/OFF状態を保存できます。");
-  };
-  if (!open) return /* @__PURE__ */ jsx("button", { onClick: () => setOpen(true), className: "fixed right-4 bottom-24 z-[999] px-4 py-3 rounded-full bg-gradient-to-r from-purple-500 to-blue-500 text-white font-black shadow-2xl", children: "＋機能" });
-  return /* @__PURE__ */ jsx("div", { className: "fixed inset-0 z-[1000] bg-black/60 flex items-end sm:items-center justify-center", children: /* @__PURE__ */ jsxs("div", { className: "bg-white w-full sm:max-w-5xl h-[88vh] sm:rounded-[32px] rounded-t-[32px] shadow-2xl overflow-hidden flex flex-col", children: [
-    /* @__PURE__ */ jsxs("div", { className: "p-4 border-b flex items-center gap-3", children: [
-      /* @__PURE__ */ jsx("div", { className: "text-2xl", children: "✨" }),
-      /* @__PURE__ */ jsxs("div", { className: "flex-1", children: [
-        /* @__PURE__ */ jsx("div", { className: "text-lg font-black", children: "機能センター 100" }),
-        /* @__PURE__ */ jsx("div", { className: "text-xs font-bold text-gray-500", children: "100個の追加機能の入口・設定・メモ・クイック操作" })
-      ] }),
-      /* @__PURE__ */ jsx("button", { onClick: () => setOpen(false), className: "w-10 h-10 rounded-full bg-gray-100 font-black", children: "×" })
-    ] }),
-    /* @__PURE__ */ jsx("div", { className: "p-3 border-b flex gap-2 overflow-x-auto", children: Object.keys(groups).map(c => /* @__PURE__ */ jsx("button", { onClick: () => setCat(c), className: `px-4 py-2 rounded-full text-sm font-black shrink-0 ${cat===c ? "bg-black text-white" : "bg-gray-100 text-gray-600"}`, children: c + " 20" }, c)) }),
-    /* @__PURE__ */ jsxs("div", { className: "p-3 border-b flex gap-2", children: [
-      /* @__PURE__ */ jsx("input", { value: q, onChange: e => setQ(e.target.value), placeholder: "機能検索", className: "flex-1 bg-gray-50 rounded-2xl px-4 py-3 outline-none font-bold" }),
-      /* @__PURE__ */ jsx("button", { onClick: () => setOut("ON: " + Object.values(enabled).filter(Boolean).length + " / 100"), className: "px-4 rounded-2xl bg-blue-500 text-white font-black", children: "確認" })
-    ] }),
-    /* @__PURE__ */ jsxs("div", { className: "flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[1fr_320px]", children: [
-      /* @__PURE__ */ jsx("div", { className: "overflow-y-auto p-3 grid grid-cols-1 sm:grid-cols-2 gap-3", children: visible.map(f => /* @__PURE__ */ jsxs("div", { className: "rounded-3xl border bg-white p-4 shadow-sm", children: [
-        /* @__PURE__ */ jsxs("div", { className: "flex items-start gap-3", children: [
-          /* @__PURE__ */ jsx("button", { onClick: () => saveEnabled(f.id), className: `w-12 h-8 rounded-full shrink-0 transition ${enabled[f.id] ? "bg-green-500" : "bg-gray-200"}`, children: /* @__PURE__ */ jsx("span", { className: `block w-6 h-6 bg-white rounded-full shadow transition ml-1 ${enabled[f.id] ? "translate-x-4" : ""}` }) }),
-          /* @__PURE__ */ jsxs("div", { className: "flex-1 min-w-0", children: [
-            /* @__PURE__ */ jsx("div", { className: "font-black text-gray-900", children: f.title }),
-            /* @__PURE__ */ jsx("div", { className: "text-xs font-bold text-gray-500 mt-1", children: f.category + "機能" })
-          ] })
-        ] }),
-        /* @__PURE__ */ jsxs("div", { className: "mt-3 flex gap-2", children: [
-          /* @__PURE__ */ jsx("button", { onClick: () => run(f.title), className: "flex-1 py-2 rounded-2xl bg-gray-900 text-white text-sm font-black", children: "開く" }),
-          /* @__PURE__ */ jsx("button", { onClick: () => saveMemo(f.id), className: "px-4 py-2 rounded-2xl bg-gray-100 text-gray-700 text-sm font-black", children: "メモ" })
-        ] }),
-        memo[f.id] && /* @__PURE__ */ jsx("div", { className: "mt-2 text-xs font-bold text-purple-600 bg-purple-50 rounded-2xl p-2", children: memo[f.id] })
-      ] }, f.id)) }),
-      /* @__PURE__ */ jsxs("div", { className: "border-t lg:border-t-0 lg:border-l p-4 bg-gray-50 overflow-y-auto", children: [
-        /* @__PURE__ */ jsx("div", { className: "font-black mb-2", children: "クイックパネル" }),
-        /* @__PURE__ */ jsxs("div", { className: "grid grid-cols-2 gap-2 mb-3", children: [
-          /* @__PURE__ */ jsx("button", { onClick: () => run("ログインボーナス"), className: "py-3 rounded-2xl bg-yellow-400 text-yellow-950 font-black", children: "ログボ" }),
-          /* @__PURE__ */ jsx("button", { onClick: () => run("招待リンク"), className: "py-3 rounded-2xl bg-blue-500 text-white font-black", children: "招待" }),
-          /* @__PURE__ */ jsx("button", { onClick: () => run("おみくじ"), className: "py-3 rounded-2xl bg-red-500 text-white font-black", children: "おみくじ" }),
-          /* @__PURE__ */ jsx("button", { onClick: () => run("ガチャ機能"), className: "py-3 rounded-2xl bg-purple-500 text-white font-black", children: "ガチャ" })
-        ] }),
-        /* @__PURE__ */ jsx("textarea", { value: out, onChange: e => setOut(e.target.value), className: "w-full h-40 rounded-3xl bg-white border p-3 text-sm font-bold outline-none", placeholder: "結果やメモ" }),
-        /* @__PURE__ */ jsx("div", { className: "mt-3 text-xs font-bold text-gray-500 leading-relaxed", children: "本格Push通知・録画保存・ランキング集計などはサーバー/APIが必要です。この版ではアプリ内UIと設定保存の土台を追加しています。" })
-      ] })
-    ] })
-  ] }) });
-}
-/* ========================= /v21 Feature Mega Pack ========================= */
-
 function App() {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -8761,7 +8833,6 @@ const leaveGroupCall = async (chatId, sessionId, { forceClear = false } = {}) =>
         ] })
       ] })
     ] }),
-    /* @__PURE__ */ jsx(FeatureMegaPack, {}),
     /* @__PURE__ */ jsx("style", { children: `.scrollbar-hide::-webkit-scrollbar { display: none; } .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; } .overscroll-contain { -webkit-overflow-scrolling: touch; }` })
   ] }) });
 }
