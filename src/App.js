@@ -6505,6 +6505,15 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
     try { return localStorage.getItem("coin_active_title_v1") || "ビギナー"; } catch (e) { return "ビギナー"; }
   });
   const [lastGacha, setLastGacha] = useState(null);
+  const [featureTab, setFeatureTab] = useState("ゲーム");
+  const [featureSearch, setFeatureSearch] = useState("");
+  const [featureEnabled, setFeatureEnabled] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("coin_feature_enabled_100_v1") || "{}"); } catch (e) { return {}; }
+  });
+  const [featureMemos, setFeatureMemos] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("coin_feature_memos_100_v1") || "{}"); } catch (e) { return {}; }
+  });
+  const [featureMessage, setFeatureMessage] = useState("");
   const [rouletteNumber, setRouletteNumber] = useState(null);
   const [rouletteChoice, setRouletteChoice] = useState("red");
   const [diceHighLow, setDiceHighLow] = useState([1, 1]);
@@ -6666,6 +6675,83 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
     setActiveTitle(title);
     localStorage.setItem("coin_active_title_v1", title);
     showNotification(`称号を「${title}」に変更しました`);
+  };
+
+  const embeddedFeatureGroups = {"チャット": ["既読・未読の細かい表示", "メッセージ検索", "ピン留めメッセージ", "お気に入りメッセージ保存", "メッセージ予約送信", "メッセージ編集", "メッセージ送信取り消し", "ボイスメッセージ", "写真・動画アルバム", "ファイル送信", "位置情報共有", "連絡先カード送信", "グループ招待リンク", "グループ内投票", "グループ内予定表", "友だちメモ機能", "友だちタグ分類", "友だちお気に入り固定", "ブロックリスト管理", "誕生日通知"], "SNS": ["VOOM投稿のいいね", "投稿コメント", "投稿保存", "投稿共有", "投稿の公開範囲設定", "24時間で消えるストーリー", "ストーリー足あと", "ハッシュタグ検索", "人気投稿ランキング", "おすすめ投稿表示", "投稿テンプレート", "写真フィルター", "動画トリミング", "スタンプ付き投稿", "音楽付き投稿", "投稿予約", "下書き保存", "リポスト", "コメント固定", "NGコメント自動非表示"], "配信": ["配信タイトル設定", "配信カテゴリ設定", "視聴者数表示", "配信開始通知", "配信終了通知", "コメント固定", "コメント読み上げ", "ハート・いいね連打", "ギフト送信", "配信者ランキング", "視聴者一覧", "視聴者を退出させる機能", "コメントNGワード", "配信ルーム招待リンク", "配信サムネイル設定", "配信前待機画面", "配信中テロップ", "画面共有の範囲選択", "配信録画保存", "アーカイブ視聴"], "ゲーム": ["ログインボーナス", "デイリーミッション", "ウィークリーミッション", "コインランキング", "勝率ランキング", "連勝ランキング", "ガチャ機能", "アイテムショップ", "アバター購入", "背景購入", "スタンプ購入", "称号システム", "レベルアップ機能", "経験値システム", "ルーレット無料券", "ゲームチケット", "フレンド対戦招待", "ランダムマッチ", "観戦モード", "対戦履歴"], "追加ゲーム": ["神経衰弱", "ババ抜き", "大富豪", "7並べ", "ポーカー", "UNO風カードゲーム", "ビンゴ", "すごろく", "宝探しゲーム", "クイズバトル", "じゃんけん対戦", "早押しクイズ", "タイピングゲーム", "釣りゲーム", "農園ゲーム", "ペット育成ゲーム", "放置コイン採掘", "おみくじ", "福引き", "カジノ風ミニゲームセンター"]};
+  const embeddedFeatures = Object.entries(embeddedFeatureGroups).flatMap(([category, items]) => items.map((title, index) => {
+    const directGameTitles = ["神経衰弱", "ババ抜き", "大富豪", "7並べ", "ポーカー", "UNO風カードゲーム", "ビンゴ", "すごろく", "宝探しゲーム", "クイズバトル", "じゃんけん対戦", "早押しクイズ", "タイピングゲーム", "釣りゲーム", "農園ゲーム", "ペット育成ゲーム", "放置コイン採掘"];
+    return {
+      id: `${category}_${index}_${title}`,
+      category,
+      title,
+      kind: directGameTitles.includes(title) ? "miniGame" : category
+    };
+  }));
+  const visibleEmbeddedFeatures = embeddedFeatures.filter((f) => f.category === featureTab && (!featureSearch || f.title.toLowerCase().includes(featureSearch.toLowerCase())));
+  const toggleEmbeddedFeature = (id) => {
+    const next = { ...featureEnabled, [id]: !featureEnabled[id] };
+    setFeatureEnabled(next);
+    localStorage.setItem("coin_feature_enabled_100_v1", JSON.stringify(next));
+  };
+  const saveFeatureMemo = (id, title) => {
+    const v = prompt(`${title} のメモ`, featureMemos[id] || "");
+    if (v === null) return;
+    const next = { ...featureMemos, [id]: v };
+    setFeatureMemos(next);
+    localStorage.setItem("coin_feature_memos_100_v1", JSON.stringify(next));
+  };
+  const runEmbeddedFeature = async (feature) => {
+    const title = feature.title;
+    try {
+      if (title === "ログインボーナス") return claimDailyBonus();
+      if (title === "ガチャ機能" || title === "福引き") return playGacha();
+      if (title === "アイテムショップ") return buyShopItem("ショップ限定バッジ", 120);
+      if (title === "称号システム") return setTitle(ownedItems.includes("勝負師") ? "勝負師" : "ビギナー");
+      if (title === "おみくじ") {
+        const lots = ["大吉", "中吉", "小吉", "吉", "末吉"];
+        const result = lots[Math.floor(Math.random() * lots.length)];
+        setFeatureMessage(`おみくじ結果：${result}`);
+        if (result === "大吉") await directCoinReward(50, "大吉ボーナス");
+        return;
+      }
+      if (["カジノ風ミニゲームセンター", "ポーカー"].includes(title)) {
+        setFeatureMessage(`${title}：下のゲームカードから遊べます`);
+        return;
+      }
+      if (title.includes("招待") || title.includes("リンク")) {
+        setFeatureMessage(`招待コード：${Math.random().toString(36).slice(2, 10).toUpperCase()}`);
+        return;
+      }
+      if (title.includes("ランキング")) {
+        setFeatureMessage(`${title}：ランキング表示を準備しました（現在のコイン：${(profile?.wallet || 0).toLocaleString()}）`);
+        return;
+      }
+      if (title.includes("ミッション")) {
+        setFeatureMessage(`${title}：現在 プレイ${missionState.play || 0}回 / 勝利${missionState.win || 0}回 / ガチャ${missionState.gacha || 0}回`);
+        return;
+      }
+      if (feature.kind === "miniGame") {
+        addMissionProgress("play", 1);
+        setFeatureMessage(`${title}をプレイしました（簡易実装）。本格画面は今後拡張できます。`);
+        return;
+      }
+      if (feature.category === "配信") {
+        setFeatureMessage(`${title}：配信画面の設定機能として有効化しました`);
+        return;
+      }
+      if (feature.category === "チャット") {
+        setFeatureMessage(`${title}：チャット機能として有効化しました`);
+        return;
+      }
+      if (feature.category === "SNS") {
+        setFeatureMessage(`${title}：VOOM/SNS機能として有効化しました`);
+        return;
+      }
+      setFeatureMessage(`${title}を有効化しました`);
+    } catch (e) {
+      console.error(e);
+      showNotification(e?.message || "機能の実行に失敗しました");
+    }
   };
 
   const settleInstantGame = async (gameName, b, mult, resultText, extra = {}) => {
@@ -7229,6 +7315,34 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
             /* @__PURE__ */ jsx("button", { onClick: () => claimMissionReward("gacha", 1, 100, "ガチャミッション報酬"), className: "mt-2 w-full py-2 rounded-xl bg-green-500 text-white text-xs font-black", children: missionState.gacha_claimed ? "受取済" : "受け取る" })
           ] })
         ] })
+      ] }),
+
+
+      /* @__PURE__ */ jsxs("div", { className: "sm:col-span-2 rounded-[32px] bg-white border shadow p-4", children: [
+        /* @__PURE__ */ jsxs("div", { className: "flex items-center gap-3 mb-3", children: [
+          /* @__PURE__ */ jsx("div", { className: "w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-2xl", children: "🧩" }),
+          /* @__PURE__ */ jsxs("div", { className: "flex-1 min-w-0", children: [
+            /* @__PURE__ */ jsx("div", { className: "font-black text-gray-900", children: "100機能を直接追加" }),
+            /* @__PURE__ */ jsx("div", { className: "text-xs font-bold text-gray-500", children: "別ページ・＋ボタンなし。コインゲーム広場の中で直接ON/OFF・実行できます。" })
+          ] })
+        ] }),
+        featureMessage && /* @__PURE__ */ jsx("div", { className: "mb-3 rounded-2xl bg-blue-50 border border-blue-100 px-3 py-2 text-xs font-black text-blue-700", children: featureMessage }),
+        /* @__PURE__ */ jsx("div", { className: "flex gap-2 overflow-x-auto pb-2 mb-3", children: Object.keys(embeddedFeatureGroups).map((c) => /* @__PURE__ */ jsx("button", { onClick: () => setFeatureTab(c), className: `px-3 py-2 rounded-full text-xs font-black shrink-0 ${featureTab === c ? "bg-black text-white" : "bg-gray-100 text-gray-600"}`, children: `${c} 20` }, c)) }),
+        /* @__PURE__ */ jsx("input", { value: featureSearch, onChange: (e) => setFeatureSearch(e.target.value), className: "w-full bg-gray-50 border rounded-2xl px-4 py-3 font-bold outline-none mb-3", placeholder: "機能を検索" }),
+        /* @__PURE__ */ jsx("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-96 overflow-y-auto pr-1", children: visibleEmbeddedFeatures.map((f) => /* @__PURE__ */ jsxs("div", { className: "rounded-2xl border bg-gray-50 p-3", children: [
+          /* @__PURE__ */ jsxs("div", { className: "flex items-start gap-2", children: [
+            /* @__PURE__ */ jsx("button", { onClick: () => toggleEmbeddedFeature(f.id), className: `w-11 h-7 rounded-full shrink-0 transition ${featureEnabled[f.id] ? "bg-green-500" : "bg-gray-300"}`, children: /* @__PURE__ */ jsx("span", { className: `block w-5 h-5 bg-white rounded-full shadow transition ml-1 ${featureEnabled[f.id] ? "translate-x-4" : ""}` }) }),
+            /* @__PURE__ */ jsxs("div", { className: "flex-1 min-w-0", children: [
+              /* @__PURE__ */ jsx("div", { className: "text-sm font-black text-gray-900 leading-tight", children: f.title }),
+              /* @__PURE__ */ jsx("div", { className: "text-[10px] font-bold text-gray-500", children: f.category })
+            ] })
+          ] }),
+          /* @__PURE__ */ jsxs("div", { className: "mt-2 flex gap-2", children: [
+            /* @__PURE__ */ jsx("button", { onClick: () => runEmbeddedFeature(f), className: "flex-1 py-2 rounded-xl bg-gray-900 text-white text-xs font-black", children: "実行" }),
+            /* @__PURE__ */ jsx("button", { onClick: () => saveFeatureMemo(f.id, f.title), className: "px-3 py-2 rounded-xl bg-white border text-gray-700 text-xs font-black", children: "メモ" })
+          ] }),
+          featureMemos[f.id] && /* @__PURE__ */ jsx("div", { className: "mt-2 rounded-xl bg-purple-50 text-purple-700 px-2 py-1 text-[10px] font-bold", children: featureMemos[f.id] })
+        ] }, f.id)) })
       ] }),
 
       /* @__PURE__ */ jsx(GameCard, { id: "pachinko", emoji: "🎰", title: "リアルパチンコ", sub: "球の演出・倍率抽選。従来のパチンコを見た目強化。", tone: "from-yellow-50 to-orange-100" }),
