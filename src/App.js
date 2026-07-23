@@ -6515,19 +6515,6 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
   const [roomData, setRoomData] = useState(null);
   const [onlineDice, setOnlineDice] = useState([1, 1, 1]);
   const [onlineCard, setOnlineCard] = useState(null);
-  const [dailyBonusDate, setDailyBonusDate] = useState(() => {
-    try { return localStorage.getItem("coin_daily_bonus_date_v1") || ""; } catch (e) { return ""; }
-  });
-  const [missionState, setMissionState] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("coin_missions_v1") || "{}"); } catch (e) { return {}; }
-  });
-  const [ownedItems, setOwnedItems] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("coin_owned_items_v1") || "[]"); } catch (e) { return []; }
-  });
-  const [activeTitle, setActiveTitle] = useState(() => {
-    try { return localStorage.getItem("coin_active_title_v1") || "ビギナー"; } catch (e) { return "ビギナー"; }
-  });
-  const [lastGacha, setLastGacha] = useState(null);
   const [genericGame, setGenericGame] = useState(null);
   const [genericResult, setGenericResult] = useState("");
   const [rouletteNumber, setRouletteNumber] = useState(null);
@@ -6611,88 +6598,149 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
       t.set(histRef, { uid: user.uid, gameName, delta, bet: extra.bet || 0, payout: extra.payout || 0, result: extra.result || "", detail: extra, createdAt: serverTimestamp() });
     });
   };
-
-  const todayKey = () => new Date().toISOString().slice(0, 10);
-  const directCoinReward = async (amount, label, extra = {}) => {
-    if (!amount || amount <= 0) return;
-    await updateWallet(amount, "bonus", { bet: 0, payout: amount, result: label, ...extra });
-    showNotification(`${label} +${amount}コイン`);
+  const settleInstantGame = async (gameName, b, mult, resultText, extra = {}) => {
+    const payout = Math.floor(b * mult);
+    const delta = payout - b;
+    await updateWallet(delta, gameName, { bet: b, mult, payout, result: resultText, ...extra });
+    const result = { id: `${Date.now()}_${Math.random()}`, gameName, bet: b, mult, payout, delta, resultText, ...extra };
+    setLastResult(result);
+    setGameHistory((prev) => [result, ...prev].slice(0, 12));
+    setStreak((prev) => delta > 0 ? prev + 1 : delta < 0 ? 0 : prev);
+    setBestWin((prev) => Math.max(prev, delta));
+    showNotification(delta > 0 ? `${resultText} +${delta}コイン` : delta === 0 ? `${resultText} ±0` : `${resultText} ${delta}コイン`);
   };
-  const claimDailyBonus = async () => {
-    const k = todayKey();
-    if (dailyBonusDate === k) return showNotification("今日のログインボーナスは受け取り済みです");
-    try {
-      await directCoinReward(100, "ログインボーナス");
-      setDailyBonusDate(k);
-      localStorage.setItem("coin_daily_bonus_date_v1", k);
-    } catch (e) {
-      console.error(e);
-      showNotification(e?.message || "ログインボーナスに失敗しました");
-    }
-  };
-  const addMissionProgress = (key, amount = 1) => {
-    const next = { ...missionState, [key]: (missionState[key] || 0) + amount };
-    setMissionState(next);
-    localStorage.setItem("coin_missions_v1", JSON.stringify(next));
-  };
-  const claimMissionReward = async (key, need, reward, label) => {
-    if ((missionState[key] || 0) < need) return showNotification("まだ達成していません");
-    if (missionState[`${key}_claimed`]) return showNotification("受け取り済みです");
-    try {
-      await directCoinReward(reward, label);
-      const next = { ...missionState, [`${key}_claimed`]: true };
-      setMissionState(next);
-      localStorage.setItem("coin_missions_v1", JSON.stringify(next));
-    } catch (e) {
-      console.error(e);
-      showNotification(e?.message || "報酬受け取りに失敗しました");
-    }
-  };
-  const playGacha = async () => {
-    const cost = 50;
-    if ((profile?.wallet || 0) < cost) return showNotification("コイン残高が足りません");
-    const pool = [
-      { name: "ノーマル背景", rarity: "N", reward: 0 },
-      { name: "ラッキー称号", rarity: "R", reward: 20 },
-      { name: "ゴールド称号", rarity: "SR", reward: 80 },
-      { name: "レジェンド称号", rarity: "UR", reward: 250 }
-    ];
-    const r = Math.random();
-    const item = r < 0.62 ? pool[0] : r < 0.88 ? pool[1] : r < 0.98 ? pool[2] : pool[3];
-    try {
-      await updateWallet(item.reward - cost, "gacha", { bet: cost, payout: item.reward, result: `${item.rarity} ${item.name}` });
-      const nextItems = Array.from(new Set([...ownedItems, item.name]));
-      setOwnedItems(nextItems);
-      localStorage.setItem("coin_owned_items_v1", JSON.stringify(nextItems));
-      setLastGacha(item);
-      addMissionProgress("gacha", 1);
-      showNotification(`ガチャ結果：${item.rarity} ${item.name}`);
-    } catch (e) {
-      console.error(e);
-      showNotification(e?.message || "ガチャに失敗しました");
-    }
-  };
-  const buyShopItem = async (name, cost) => {
-    if (ownedItems.includes(name)) return showNotification("すでに所持しています");
-    if ((profile?.wallet || 0) < cost) return showNotification("コイン残高が足りません");
-    try {
-      await updateWallet(-cost, "shop", { bet: cost, payout: 0, result: name });
-      const nextItems = [...ownedItems, name];
-      setOwnedItems(nextItems);
-      localStorage.setItem("coin_owned_items_v1", JSON.stringify(nextItems));
-      showNotification(`${name}を購入しました`);
-    } catch (e) {
-      console.error(e);
-      showNotification(e?.message || "購入に失敗しました");
-    }
-  };
-  const setTitle = (title) => {
-    if (!ownedItems.includes(title) && !["ビギナー", "勝負師", "配信者"].includes(title)) return showNotification("まだ所持していません");
-    setActiveTitle(title);
-    localStorage.setItem("coin_active_title_v1", title);
-    showNotification(`称号を「${title}」に変更しました`);
+  const chinchiroScore = (dice) => {
+    const sorted = [...dice].sort((a, b2) => a - b2);
+    if (sorted[0] === sorted[1] && sorted[1] === sorted[2]) return { score: sorted[0] === 1 ? 50 : 30 + sorted[0], mult: sorted[0] === 1 ? 5 : 3, text: sorted[0] === 1 ? "ピンゾロ" : `${sorted[0]}ゾロ` };
+    if (sorted.join("") === "456") return { score: 40, mult: 2, text: "シゴロ" };
+    if (sorted.join("") === "123") return { score: -10, mult: 0, text: "ヒフミ" };
+    const counts = {};
+    dice.forEach((d) => counts[d] = (counts[d] || 0) + 1);
+    const eye = Number(Object.keys(counts).find((k) => counts[k] === 1));
+    if (eye) return { score: eye, mult: eye >= 4 ? 2 : 1, text: `${eye}の目` };
+    return { score: 0, mult: 0, text: "目なし" };
   };
 
+  const rouletteColor = (n) => {
+    if (n === 0) return "green";
+    const reds = [1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36];
+    return reds.includes(n) ? "red" : "black";
+  };
+  const playRoulette = async () => {
+    const b = parseBet();
+    if (!b || busy) return;
+    setBusy(true);
+    try {
+      for (let i = 0; i < 12; i++) {
+        const temp = Math.floor(Math.random() * 37);
+        setRouletteNumber(temp);
+        setRouletteSpinLabel(i < 10 ? "SPIN" : "STOP");
+        await new Promise((resolve) => setTimeout(resolve, 35 + i * 8));
+      }
+      const n = Math.floor(Math.random() * 37);
+      setRouletteNumber(n);
+      setRouletteSpinLabel("RESULT");
+      const color = rouletteColor(n);
+      const mult = rouletteChoice === "green" ? (color === "green" ? 14 : 0) : rouletteChoice === color ? 2 : 0;
+      await settleInstantGame("roulette", b, mult, `結果 ${n} / ${color}`, { number: n, color, choice: rouletteChoice });
+    } catch (e) {
+      console.error(e);
+      showNotification(e?.message || "ルーレットに失敗しました");
+    } finally {
+      setTimeout(() => setBusy(false), 700);
+    }
+  };
+  const playDiceHighLow = async (choice) => {
+    const b = parseBet();
+    if (!b || busy) return;
+    setBusy(true);
+    try {
+      for (let i = 0; i < 8; i++) {
+        setDiceHighLow([1 + Math.floor(Math.random() * 6), 1 + Math.floor(Math.random() * 6)]);
+        await new Promise((resolve) => setTimeout(resolve, 45));
+      }
+      const dice = [1 + Math.floor(Math.random() * 6), 1 + Math.floor(Math.random() * 6)];
+      setDiceHighLow(dice);
+      const sum = dice[0] + dice[1];
+      const result = sum === 7 ? "seven" : sum >= 8 ? "high" : "low";
+      const win = choice === result;
+      const mult = result === "seven" && win ? 5 : win ? 2 : 0;
+      await settleInstantGame("dice_highlow", b, mult, `合計 ${sum} / ${result === "seven" ? "7" : result === "high" ? "大" : "小"} ${win ? "的中" : "ハズレ"}`, { dice: dice.join("-"), choice, sum });
+    } catch (e) {
+      console.error(e);
+      showNotification(e?.message || "大小サイコロに失敗しました");
+    } finally {
+      setTimeout(() => setBusy(false), 500);
+    }
+  };
+  const playScratch = async () => {
+    const b = parseBet();
+    if (!b || busy) return;
+    setBusy(true);
+    try {
+      const icons = ["🍒", "🍋", "💎", "7️⃣", "⭐"];
+      setScratchCells(["?", "?", "?"]);
+      const cells = [0, 1, 2].map(() => icons[Math.floor(Math.random() * icons.length)]);
+      for (let i = 0; i < 3; i++) {
+        setScratchCells((prev) => prev.map((x, idx) => idx <= i ? cells[idx] : "?"));
+        await new Promise((resolve) => setTimeout(resolve, 220));
+      }
+      const same3 = cells[0] === cells[1] && cells[1] === cells[2];
+      const same2 = cells[0] === cells[1] || cells[1] === cells[2] || cells[0] === cells[2];
+      const mult = same3 ? (cells[0] === "7️⃣" ? 12 : cells[0] === "💎" ? 8 : 5) : same2 ? 2 : 0;
+      await settleInstantGame("scratch", b, mult, same3 ? `3つ一致 ${cells.join(" ")}` : same2 ? `2つ一致 ${cells.join(" ")}` : `ハズレ ${cells.join(" ")}`, { cells: cells.join(" ") });
+    } catch (e) {
+      console.error(e);
+      showNotification(e?.message || "スクラッチに失敗しました");
+    } finally {
+      setTimeout(() => setBusy(false), 500);
+    }
+  };
+  const pokerScore = (cards) => {
+    const ranks = cards.map((c) => c.rank);
+    const suits = cards.map((c) => c.suit);
+    const counts = {};
+    ranks.forEach((r) => counts[r] = (counts[r] || 0) + 1);
+    const values = Object.values(counts).sort((a, b2) => b2 - a);
+    const nums = cards.map((c) => c.rankIndex).sort((a, b2) => a - b2);
+    const flush = suits.every((x) => x === suits[0]);
+    const straight = (nums[2] - nums[0] === 2 && new Set(nums).size === 3) || (ranks.includes("A") && ranks.includes("Q") && ranks.includes("K"));
+    if (straight && flush) return { mult: 10, text: "ストレートフラッシュ" };
+    if (values[0] === 3) return { mult: 6, text: "スリーカード" };
+    if (straight) return { mult: 4, text: "ストレート" };
+    if (flush) return { mult: 3, text: "フラッシュ" };
+    if (values[0] === 2) return { mult: 2, text: "ワンペア" };
+    return { mult: 0, text: "ノーペア" };
+  };
+  const playThreeCardPoker = async () => {
+    const b = parseBet();
+    if (!b || busy) return;
+    setBusy(true);
+    try {
+      const deckKeys = new Set();
+      const hand = [];
+      while (hand.length < 3) {
+        const c = drawCard();
+        const key = `${c.suit}${c.rank}`;
+        if (!deckKeys.has(key)) {
+          deckKeys.add(key);
+          hand.push(c);
+        }
+      }
+      setPokerHand([]);
+      for (let i = 0; i < hand.length; i++) {
+        setPokerHand(hand.slice(0, i + 1));
+        await new Promise((resolve) => setTimeout(resolve, 180));
+      }
+      const score = pokerScore(hand);
+      await settleInstantGame("three_card_poker", b, score.mult, `${score.text} / ${hand.map(cardText).join(" ")}`, { hand: hand.map(cardText).join(" "), handName: score.text });
+    } catch (e) {
+      console.error(e);
+      showNotification(e?.message || "3カードポーカーに失敗しました");
+    } finally {
+      setTimeout(() => setBusy(false), 600);
+    }
+  };
 
   useEffect(() => {
     if (!myRoomId) return;
@@ -7002,21 +7050,21 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
 
 
   const miniGameDefinitions = {
-    memory: { title: "神経衰弱", emoji: "🧠", sub: "同じ絵柄を探す記憶ゲーム", reward: 60 },
-    oldmaid: { title: "ババ抜き", emoji: "🃏", sub: "ジョーカーを引かないカードゲーム", reward: 45 },
-    daifugo: { title: "大富豪", emoji: "👑", sub: "強いカードで上がりを狙うゲーム", reward: 80 },
-    seven: { title: "7並べ", emoji: "7️⃣", sub: "7から順番に並べるゲーム", reward: 50 },
-    uno: { title: "UNO風カードゲーム", emoji: "🌈", sub: "色と数字を合わせるゲーム", reward: 55 },
-    bingo: { title: "ビンゴ", emoji: "🎱", sub: "数字を揃えてビンゴを狙うゲーム", reward: 70 },
-    sugoroku: { title: "すごろく", emoji: "🧭", sub: "サイコロで進むボードゲーム", reward: 65 },
-    treasure: { title: "宝探し", emoji: "💎", sub: "宝箱を選んで報酬を探すゲーム", reward: 90 },
-    quiz: { title: "クイズバトル", emoji: "❓", sub: "正解を選んでコインを獲得", reward: 75 },
-    janken: { title: "じゃんけん対戦", emoji: "✊", sub: "じゃんけんで勝負", reward: 40 },
-    typing: { title: "タイピング", emoji: "⌨️", sub: "文字入力速度ゲーム", reward: 55 },
-    fishing: { title: "釣りゲーム", emoji: "🎣", sub: "魚を釣ってコイン獲得", reward: 60 },
-    farm: { title: "農園ゲーム", emoji: "🌱", sub: "作物を育てるミニゲーム", reward: 50 },
-    pet: { title: "ペット育成", emoji: "🐶", sub: "ペットのお世話で報酬", reward: 50 },
-    idle: { title: "放置コイン採掘", emoji: "⛏️", sub: "採掘でコイン獲得", reward: 35 }
+    memory: { title: "神経衰弱", emoji: "🧠", sub: "同じ絵柄を探す記憶ゲーム" },
+    oldmaid: { title: "ババ抜き", emoji: "🃏", sub: "ジョーカーを引かないカードゲーム" },
+    daifugo: { title: "大富豪", emoji: "👑", sub: "強いカードで上がりを狙うゲーム" },
+    seven: { title: "7並べ", emoji: "7️⃣", sub: "7から順番に並べるゲーム" },
+    uno: { title: "UNO風カードゲーム", emoji: "🌈", sub: "色と数字を合わせるゲーム" },
+    bingo: { title: "ビンゴ", emoji: "🎱", sub: "数字を揃えてビンゴを狙うゲーム" },
+    sugoroku: { title: "すごろく", emoji: "🧭", sub: "サイコロで進むボードゲーム" },
+    treasure: { title: "宝探し", emoji: "💎", sub: "宝箱を選んで報酬を探すゲーム" },
+    quiz: { title: "クイズバトル", emoji: "❓", sub: "正解を選んでコインを獲得" },
+    janken: { title: "じゃんけん対戦", emoji: "✊", sub: "じゃんけんで勝負" },
+    typing: { title: "タイピング", emoji: "⌨️", sub: "入力速度ゲーム" },
+    fishing: { title: "釣りゲーム", emoji: "🎣", sub: "魚を釣ってコイン獲得" },
+    farm: { title: "農園ゲーム", emoji: "🌱", sub: "作物を育てるミニゲーム" },
+    pet: { title: "ペット育成", emoji: "🐶", sub: "ペットのお世話で報酬" },
+    idle: { title: "放置コイン採掘", emoji: "⛏️", sub: "採掘でコイン獲得" }
   };
   const playGenericMiniGame = async () => {
     if (!genericGame) return;
@@ -7103,53 +7151,6 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
   if (page === "menu") return /* @__PURE__ */ jsxs("div", { className: "w-full h-full flex flex-col bg-gray-50", children: [
     /* @__PURE__ */ jsx(Header, { title: "コインゲーム広場", sub: "ゲームごとにページ分け / オンライン対戦対応 / アプリ内コイン専用" }),
     /* @__PURE__ */ jsxs("div", { className: "flex-1 overflow-y-auto p-4 grid grid-cols-1 sm:grid-cols-2 gap-4", children: [
-
-      /* @__PURE__ */ jsxs("div", { className: "sm:col-span-2 rounded-[32px] bg-white border shadow p-4", children: [
-        /* @__PURE__ */ jsxs("div", { className: "flex items-center gap-3 mb-3", children: [
-          /* @__PURE__ */ jsx("div", { className: "w-12 h-12 rounded-2xl bg-yellow-50 flex items-center justify-center text-2xl", children: "🎁" }),
-          /* @__PURE__ */ jsxs("div", { className: "flex-1", children: [
-            /* @__PURE__ */ jsx("div", { className: "font-black text-gray-900", children: "ボーナス・ミッション・ガチャ" }),
-            /* @__PURE__ */ jsxs("div", { className: "text-xs font-bold text-gray-500", children: [
-              "現在の称号：",
-              activeTitle,
-              " / 所持アイテム ",
-              ownedItems.length,
-              "個"
-            ] })
-          ] })
-        ] }),
-        /* @__PURE__ */ jsxs("div", { className: "grid grid-cols-2 sm:grid-cols-4 gap-2", children: [
-          /* @__PURE__ */ jsx("button", { onClick: claimDailyBonus, className: "py-3 rounded-2xl bg-yellow-400 text-yellow-950 font-black text-sm", children: dailyBonusDate === todayKey() ? "ログボ済" : "ログボ+100" }),
-          /* @__PURE__ */ jsx("button", { onClick: playGacha, className: "py-3 rounded-2xl bg-purple-500 text-white font-black text-sm", children: "ガチャ50" }),
-          /* @__PURE__ */ jsx("button", { onClick: () => buyShopItem("勝負師", 300), className: "py-3 rounded-2xl bg-gray-900 text-white font-black text-sm", children: "称号購入" }),
-          /* @__PURE__ */ jsx("button", { onClick: () => setTitle(ownedItems.includes("勝負師") ? "勝負師" : "ビギナー"), className: "py-3 rounded-2xl bg-blue-500 text-white font-black text-sm", children: "称号変更" })
-        ] }),
-        lastGacha && /* @__PURE__ */ jsxs("div", { className: "mt-3 rounded-2xl bg-purple-50 text-purple-700 px-3 py-2 text-xs font-black", children: [
-          "直近ガチャ：",
-          lastGacha.rarity,
-          " ",
-          lastGacha.name
-        ] }),
-        /* @__PURE__ */ jsxs("div", { className: "mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2", children: [
-          /* @__PURE__ */ jsxs("div", { className: "rounded-2xl bg-gray-50 border p-3", children: [
-            /* @__PURE__ */ jsx("div", { className: "text-xs font-black text-gray-500", children: "ミッション：3回遊ぶ" }),
-            /* @__PURE__ */ jsxs("div", { className: "text-sm font-black text-gray-900", children: [missionState.play || 0, " / 3"] }),
-            /* @__PURE__ */ jsx("button", { onClick: () => claimMissionReward("play", 3, 150, "ミッション報酬"), className: "mt-2 w-full py-2 rounded-xl bg-green-500 text-white text-xs font-black", children: missionState.play_claimed ? "受取済" : "受け取る" })
-          ] }),
-          /* @__PURE__ */ jsxs("div", { className: "rounded-2xl bg-gray-50 border p-3", children: [
-            /* @__PURE__ */ jsx("div", { className: "text-xs font-black text-gray-500", children: "ミッション：1回勝つ" }),
-            /* @__PURE__ */ jsxs("div", { className: "text-sm font-black text-gray-900", children: [missionState.win || 0, " / 1"] }),
-            /* @__PURE__ */ jsx("button", { onClick: () => claimMissionReward("win", 1, 200, "勝利ミッション報酬"), className: "mt-2 w-full py-2 rounded-xl bg-green-500 text-white text-xs font-black", children: missionState.win_claimed ? "受取済" : "受け取る" })
-          ] }),
-          /* @__PURE__ */ jsxs("div", { className: "rounded-2xl bg-gray-50 border p-3", children: [
-            /* @__PURE__ */ jsx("div", { className: "text-xs font-black text-gray-500", children: "ミッション：ガチャ1回" }),
-            /* @__PURE__ */ jsxs("div", { className: "text-sm font-black text-gray-900", children: [missionState.gacha || 0, " / 1"] }),
-            /* @__PURE__ */ jsx("button", { onClick: () => claimMissionReward("gacha", 1, 100, "ガチャミッション報酬"), className: "mt-2 w-full py-2 rounded-xl bg-green-500 text-white text-xs font-black", children: missionState.gacha_claimed ? "受取済" : "受け取る" })
-          ] })
-        ] })
-      ] }),
-
-
       /* @__PURE__ */ jsx(GameCard, { id: "pachinko", emoji: "🎰", title: "リアルパチンコ", sub: "球の演出・倍率抽選。従来のパチンコを見た目強化。", tone: "from-yellow-50 to-orange-100" }),
       /* @__PURE__ */ jsx(GameCard, { id: "highlow", emoji: "🃏", title: "ハイ＆ロー", sub: "親カードより大きいか小さいかを予想。", tone: "from-green-50 to-emerald-100" }),
       /* @__PURE__ */ jsx(GameCard, { id: "blackjack", emoji: "♠️", title: "ブラックジャック", sub: "21に近づける定番カードゲーム。", tone: "from-slate-50 to-gray-200" }),
@@ -8052,11 +8053,6 @@ const CoinArcadeView = ({ onBack }) => {
   ] });
 };
 // ===================== /Coin Arcade =====================
-
-
-/* ========================= v21 Feature Mega Pack: 100 functions ========================= */
-
-
 
 function App() {
   const [user, setUser] = useState(null);
