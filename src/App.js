@@ -4554,6 +4554,12 @@ function LiveStreamModal({ open, onClose, user }) {
         /* Chat */
         /* @__PURE__ */ jsxs("div", { className: "bg-white rounded-3xl border p-3 space-y-2", children: [
           /* @__PURE__ */ jsx("div", { className: "text-sm font-bold text-gray-700", children: "コメントチャット" }),
+          /* @__PURE__ */ jsxs("div", { className: "flex gap-2 overflow-x-auto scrollbar-hide", children: [
+            /* @__PURE__ */ jsx("button", { onClick: () => pushChat("system", "📌 コメントを固定しました（デモ）"), className: "px-3 py-1.5 rounded-full bg-yellow-50 text-yellow-700 text-xs font-black shrink-0", children: "固定" }),
+            /* @__PURE__ */ jsx("button", { onClick: () => pushChat("system", "💗 ハートが送られました"), className: "px-3 py-1.5 rounded-full bg-pink-50 text-pink-600 text-xs font-black shrink-0", children: "ハート" }),
+            /* @__PURE__ */ jsx("button", { onClick: () => pushChat("system", "🎁 ギフトが送られました"), className: "px-3 py-1.5 rounded-full bg-purple-50 text-purple-600 text-xs font-black shrink-0", children: "ギフト" }),
+            /* @__PURE__ */ jsx("button", { onClick: () => pushChat("system", "👥 視聴者数を更新しました"), className: "px-3 py-1.5 rounded-full bg-blue-50 text-blue-600 text-xs font-black shrink-0", children: "視聴者" })
+          ] }),
           /* @__PURE__ */ jsx("div", { className: "h-40 min-h-40 overflow-auto bg-gray-50 rounded-2xl p-2 space-y-1", children: chatLog.map((m) => /* @__PURE__ */ jsxs("div", { className: "text-sm", children: [
             /* @__PURE__ */ jsx("span", { className: "font-bold text-gray-700", children: m.who }),
             /* @__PURE__ */ jsx("span", { className: "text-gray-500", children: " : " }),
@@ -4594,6 +4600,8 @@ function LiveStreamModal({ open, onClose, user }) {
 const ChatRoomView = ({ user, profile, allUsers, chats, activeChatId, setActiveChatId, setView, db: db2, appId: appId2, mutedChats, toggleMuteChat, showNotification, addFriendById, startChatWithUser, startVideoCall }) => {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
+  const [quickReplyOpen, setQuickReplyOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -5293,6 +5301,15 @@ const ChatRoomView = ({ user, profile, allUsers, chats, activeChatId, setActiveC
         ] }),
         /* @__PURE__ */ jsx("button", { onClick: () => setReplyTo(null), className: "p-1 hover:bg-gray-200 rounded-full", children: /* @__PURE__ */ jsx(X, { className: "w-4 h-4 text-gray-500" }) })
       ] }),
+      /* @__PURE__ */ jsxs("div", { className: "flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide", children: [
+        /* @__PURE__ */ jsx("button", { onClick: () => setQuickReplyOpen(!quickReplyOpen), className: "px-3 py-1.5 rounded-full bg-green-50 text-green-600 text-xs font-black shrink-0", children: "定型文" }),
+        /* @__PURE__ */ jsx("button", { onClick: () => setText((text || "") + "あとで返信します。"), className: "px-3 py-1.5 rounded-full bg-gray-100 text-gray-600 text-xs font-black shrink-0", children: "あとで返信" }),
+        /* @__PURE__ */ jsx("button", { onClick: () => setText((text || "") + "確認しました。"), className: "px-3 py-1.5 rounded-full bg-gray-100 text-gray-600 text-xs font-black shrink-0", children: "確認しました" }),
+        /* @__PURE__ */ jsx("button", { onClick: () => setText((text || "") + "ありがとうございます。"), className: "px-3 py-1.5 rounded-full bg-gray-100 text-gray-600 text-xs font-black shrink-0", children: "ありがとう" }),
+        /* @__PURE__ */ jsx("button", { onClick: () => setScheduleOpen(!scheduleOpen), className: "px-3 py-1.5 rounded-full bg-blue-50 text-blue-600 text-xs font-black shrink-0", children: "予約" })
+      ] }),
+      quickReplyOpen && /* @__PURE__ */ jsx("div", { className: "mb-2 rounded-2xl bg-white border p-2 grid grid-cols-2 gap-2 shadow-sm", children: ["了解です", "少し待ってください", "今から確認します", "後ほど連絡します"].map((t) => /* @__PURE__ */ jsx("button", { onClick: () => { setText(t); setQuickReplyOpen(false); }, className: "py-2 rounded-xl bg-gray-50 text-xs font-bold text-gray-700", children: t }, t)) }),
+      scheduleOpen && /* @__PURE__ */ jsx("div", { className: "mb-2 rounded-2xl bg-blue-50 border border-blue-100 p-2 text-xs font-bold text-blue-700", children: "予約送信メモ：ここで作った文章を残して、あとで送信できます。" }),
       /* @__PURE__ */ jsxs("div", { className: "flex items-center gap-3", children: [
         /* @__PURE__ */ jsx("button", { onClick: () => setPlusMenuOpen(!plusMenuOpen), className: "p-1", children: /* @__PURE__ */ jsx(Plus, { className: "w-6 h-6 text-gray-400" }) }),
         !isRecording ? /* @__PURE__ */ jsx("input", { className: "flex-1 bg-[#e6e6ea] rounded-full px-4 py-2 text-sm leading-none focus:outline-none placeholder:text-[#9ca3af]", placeholder: "\u30E1\u30C3\u30BB\u30FC\u30B8\u3092\u5165\u529B", value: text, onChange: (e) => setText(e.target.value), onKeyPress: (e) => e.key === "Enter" && sendMessage(text) }) : /* @__PURE__ */ jsx("div", { className: "flex-1 bg-red-50 rounded-full px-4 py-2 flex items-center justify-between animate-pulse", children: /* @__PURE__ */ jsxs("div", { className: "flex items-center gap-2 text-red-500 font-bold text-[11px]", children: [
@@ -5471,6 +5488,12 @@ const VoomView = ({ user, allUsers, profile, posts, showNotification, db: db2, a
     /* @__PURE__ */ jsx("div", { className: "bg-white p-4 border-b shrink-0", children: /* @__PURE__ */ jsx("h1", { className: "text-xl font-bold", children: "VOOM" }) }),
     /* @__PURE__ */ jsxs("div", { ref: listRef, className: "flex-1 overflow-y-auto scrollbar-hide pb-20", children: [
       /* @__PURE__ */ jsxs("div", { className: "bg-white p-4 mb-2", children: [
+        /* @__PURE__ */ jsxs("div", { className: "flex gap-2 overflow-x-auto pb-2 mb-2 scrollbar-hide", children: [
+          /* @__PURE__ */ jsx("button", { onClick: () => setContent((content || "") + " #日常"), className: "px-3 py-1.5 rounded-full bg-green-50 text-green-600 text-xs font-black shrink-0", children: "#日常" }),
+          /* @__PURE__ */ jsx("button", { onClick: () => setContent((content || "") + " #ゲーム"), className: "px-3 py-1.5 rounded-full bg-purple-50 text-purple-600 text-xs font-black shrink-0", children: "#ゲーム" }),
+          /* @__PURE__ */ jsx("button", { onClick: () => setContent((content || "") + " #配信"), className: "px-3 py-1.5 rounded-full bg-red-50 text-red-600 text-xs font-black shrink-0", children: "#配信" }),
+          /* @__PURE__ */ jsx("button", { onClick: () => setContent("今日のひとこと："), className: "px-3 py-1.5 rounded-full bg-gray-100 text-gray-600 text-xs font-black shrink-0", children: "テンプレ" })
+        ] }),
         /* @__PURE__ */ jsx("textarea", { className: "w-full text-sm outline-none resize-none min-h-[60px]", placeholder: "何をしていますか？", value: content, onChange: (e) => setContent(e.target.value) }),
         mediaPreview && /* @__PURE__ */ jsxs("div", { className: "relative mt-2", children: [
           mediaType === "video" ? /* @__PURE__ */ jsx("video", { src: mediaPreview, className: "w-full rounded-xl bg-black", controls: true }) : /* @__PURE__ */ jsx("img", { src: mediaPreview, className: "max-h-60 rounded-xl" }),
@@ -6505,15 +6528,8 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
     try { return localStorage.getItem("coin_active_title_v1") || "ビギナー"; } catch (e) { return "ビギナー"; }
   });
   const [lastGacha, setLastGacha] = useState(null);
-  const [featureTab, setFeatureTab] = useState("ゲーム");
-  const [featureSearch, setFeatureSearch] = useState("");
-  const [featureEnabled, setFeatureEnabled] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("coin_feature_enabled_100_v1") || "{}"); } catch (e) { return {}; }
-  });
-  const [featureMemos, setFeatureMemos] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("coin_feature_memos_100_v1") || "{}"); } catch (e) { return {}; }
-  });
-  const [featureMessage, setFeatureMessage] = useState("");
+  const [genericGame, setGenericGame] = useState(null);
+  const [genericResult, setGenericResult] = useState("");
   const [rouletteNumber, setRouletteNumber] = useState(null);
   const [rouletteChoice, setRouletteChoice] = useState("red");
   const [diceHighLow, setDiceHighLow] = useState([1, 1]);
@@ -6677,228 +6693,6 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
     showNotification(`称号を「${title}」に変更しました`);
   };
 
-  const embeddedFeatureGroups = {"チャット": ["既読・未読の細かい表示", "メッセージ検索", "ピン留めメッセージ", "お気に入りメッセージ保存", "メッセージ予約送信", "メッセージ編集", "メッセージ送信取り消し", "ボイスメッセージ", "写真・動画アルバム", "ファイル送信", "位置情報共有", "連絡先カード送信", "グループ招待リンク", "グループ内投票", "グループ内予定表", "友だちメモ機能", "友だちタグ分類", "友だちお気に入り固定", "ブロックリスト管理", "誕生日通知"], "SNS": ["VOOM投稿のいいね", "投稿コメント", "投稿保存", "投稿共有", "投稿の公開範囲設定", "24時間で消えるストーリー", "ストーリー足あと", "ハッシュタグ検索", "人気投稿ランキング", "おすすめ投稿表示", "投稿テンプレート", "写真フィルター", "動画トリミング", "スタンプ付き投稿", "音楽付き投稿", "投稿予約", "下書き保存", "リポスト", "コメント固定", "NGコメント自動非表示"], "配信": ["配信タイトル設定", "配信カテゴリ設定", "視聴者数表示", "配信開始通知", "配信終了通知", "コメント固定", "コメント読み上げ", "ハート・いいね連打", "ギフト送信", "配信者ランキング", "視聴者一覧", "視聴者を退出させる機能", "コメントNGワード", "配信ルーム招待リンク", "配信サムネイル設定", "配信前待機画面", "配信中テロップ", "画面共有の範囲選択", "配信録画保存", "アーカイブ視聴"], "ゲーム": ["ログインボーナス", "デイリーミッション", "ウィークリーミッション", "コインランキング", "勝率ランキング", "連勝ランキング", "ガチャ機能", "アイテムショップ", "アバター購入", "背景購入", "スタンプ購入", "称号システム", "レベルアップ機能", "経験値システム", "ルーレット無料券", "ゲームチケット", "フレンド対戦招待", "ランダムマッチ", "観戦モード", "対戦履歴"], "追加ゲーム": ["神経衰弱", "ババ抜き", "大富豪", "7並べ", "ポーカー", "UNO風カードゲーム", "ビンゴ", "すごろく", "宝探しゲーム", "クイズバトル", "じゃんけん対戦", "早押しクイズ", "タイピングゲーム", "釣りゲーム", "農園ゲーム", "ペット育成ゲーム", "放置コイン採掘", "おみくじ", "福引き", "カジノ風ミニゲームセンター"]};
-  const embeddedFeatures = Object.entries(embeddedFeatureGroups).flatMap(([category, items]) => items.map((title, index) => {
-    const directGameTitles = ["神経衰弱", "ババ抜き", "大富豪", "7並べ", "ポーカー", "UNO風カードゲーム", "ビンゴ", "すごろく", "宝探しゲーム", "クイズバトル", "じゃんけん対戦", "早押しクイズ", "タイピングゲーム", "釣りゲーム", "農園ゲーム", "ペット育成ゲーム", "放置コイン採掘"];
-    return {
-      id: `${category}_${index}_${title}`,
-      category,
-      title,
-      kind: directGameTitles.includes(title) ? "miniGame" : category
-    };
-  }));
-  const visibleEmbeddedFeatures = embeddedFeatures.filter((f) => f.category === featureTab && (!featureSearch || f.title.toLowerCase().includes(featureSearch.toLowerCase())));
-  const toggleEmbeddedFeature = (id) => {
-    const next = { ...featureEnabled, [id]: !featureEnabled[id] };
-    setFeatureEnabled(next);
-    localStorage.setItem("coin_feature_enabled_100_v1", JSON.stringify(next));
-  };
-  const saveFeatureMemo = (id, title) => {
-    const v = prompt(`${title} のメモ`, featureMemos[id] || "");
-    if (v === null) return;
-    const next = { ...featureMemos, [id]: v };
-    setFeatureMemos(next);
-    localStorage.setItem("coin_feature_memos_100_v1", JSON.stringify(next));
-  };
-  const runEmbeddedFeature = async (feature) => {
-    const title = feature.title;
-    try {
-      if (title === "ログインボーナス") return claimDailyBonus();
-      if (title === "ガチャ機能" || title === "福引き") return playGacha();
-      if (title === "アイテムショップ") return buyShopItem("ショップ限定バッジ", 120);
-      if (title === "称号システム") return setTitle(ownedItems.includes("勝負師") ? "勝負師" : "ビギナー");
-      if (title === "おみくじ") {
-        const lots = ["大吉", "中吉", "小吉", "吉", "末吉"];
-        const result = lots[Math.floor(Math.random() * lots.length)];
-        setFeatureMessage(`おみくじ結果：${result}`);
-        if (result === "大吉") await directCoinReward(50, "大吉ボーナス");
-        return;
-      }
-      if (["カジノ風ミニゲームセンター", "ポーカー"].includes(title)) {
-        setFeatureMessage(`${title}：下のゲームカードから遊べます`);
-        return;
-      }
-      if (title.includes("招待") || title.includes("リンク")) {
-        setFeatureMessage(`招待コード：${Math.random().toString(36).slice(2, 10).toUpperCase()}`);
-        return;
-      }
-      if (title.includes("ランキング")) {
-        setFeatureMessage(`${title}：ランキング表示を準備しました（現在のコイン：${(profile?.wallet || 0).toLocaleString()}）`);
-        return;
-      }
-      if (title.includes("ミッション")) {
-        setFeatureMessage(`${title}：現在 プレイ${missionState.play || 0}回 / 勝利${missionState.win || 0}回 / ガチャ${missionState.gacha || 0}回`);
-        return;
-      }
-      if (feature.kind === "miniGame") {
-        addMissionProgress("play", 1);
-        setFeatureMessage(`${title}をプレイしました（簡易実装）。本格画面は今後拡張できます。`);
-        return;
-      }
-      if (feature.category === "配信") {
-        setFeatureMessage(`${title}：配信画面の設定機能として有効化しました`);
-        return;
-      }
-      if (feature.category === "チャット") {
-        setFeatureMessage(`${title}：チャット機能として有効化しました`);
-        return;
-      }
-      if (feature.category === "SNS") {
-        setFeatureMessage(`${title}：VOOM/SNS機能として有効化しました`);
-        return;
-      }
-      setFeatureMessage(`${title}を有効化しました`);
-    } catch (e) {
-      console.error(e);
-      showNotification(e?.message || "機能の実行に失敗しました");
-    }
-  };
-
-  const settleInstantGame = async (gameName, b, mult, resultText, extra = {}) => {
-    const payout = Math.floor(b * mult);
-    const delta = payout - b;
-    await updateWallet(delta, gameName, { bet: b, mult, payout, result: resultText, ...extra });
-    addMissionProgress("play", 1);
-    if (delta > 0) addMissionProgress("win", 1);
-    const result = { id: `${Date.now()}_${Math.random()}`, gameName, bet: b, mult, payout, delta, resultText, ...extra };
-    setLastResult(result);
-    setGameHistory((prev) => [result, ...prev].slice(0, 12));
-    setStreak((prev) => delta > 0 ? prev + 1 : delta < 0 ? 0 : prev);
-    setBestWin((prev) => Math.max(prev, delta));
-    showNotification(delta > 0 ? `${resultText} +${delta}コイン` : delta === 0 ? `${resultText} ±0` : `${resultText} ${delta}コイン`);
-  };
-  const chinchiroScore = (dice) => {
-    const sorted = [...dice].sort((a, b2) => a - b2);
-    if (sorted[0] === sorted[1] && sorted[1] === sorted[2]) return { score: sorted[0] === 1 ? 50 : 30 + sorted[0], mult: sorted[0] === 1 ? 5 : 3, text: sorted[0] === 1 ? "ピンゾロ" : `${sorted[0]}ゾロ` };
-    if (sorted.join("") === "456") return { score: 40, mult: 2, text: "シゴロ" };
-    if (sorted.join("") === "123") return { score: -10, mult: 0, text: "ヒフミ" };
-    const counts = {};
-    dice.forEach((d) => counts[d] = (counts[d] || 0) + 1);
-    const eye = Number(Object.keys(counts).find((k) => counts[k] === 1));
-    if (eye) return { score: eye, mult: eye >= 4 ? 2 : 1, text: `${eye}の目` };
-    return { score: 0, mult: 0, text: "目なし" };
-  };
-
-  const rouletteColor = (n) => {
-    if (n === 0) return "green";
-    const reds = [1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36];
-    return reds.includes(n) ? "red" : "black";
-  };
-  const playRoulette = async () => {
-    const b = parseBet();
-    if (!b || busy) return;
-    setBusy(true);
-    try {
-      for (let i = 0; i < 12; i++) {
-        const temp = Math.floor(Math.random() * 37);
-        setRouletteNumber(temp);
-        setRouletteSpinLabel(i < 10 ? "SPIN" : "STOP");
-        await new Promise((resolve) => setTimeout(resolve, 35 + i * 8));
-      }
-      const n = Math.floor(Math.random() * 37);
-      setRouletteNumber(n);
-      setRouletteSpinLabel("RESULT");
-      const color = rouletteColor(n);
-      const mult = rouletteChoice === "green" ? (color === "green" ? 14 : 0) : rouletteChoice === color ? 2 : 0;
-      await settleInstantGame("roulette", b, mult, `結果 ${n} / ${color}`, { number: n, color, choice: rouletteChoice });
-    } catch (e) {
-      console.error(e);
-      showNotification(e?.message || "ルーレットに失敗しました");
-    } finally {
-      setTimeout(() => setBusy(false), 700);
-    }
-  };
-  const playDiceHighLow = async (choice) => {
-    const b = parseBet();
-    if (!b || busy) return;
-    setBusy(true);
-    try {
-      for (let i = 0; i < 8; i++) {
-        setDiceHighLow([1 + Math.floor(Math.random() * 6), 1 + Math.floor(Math.random() * 6)]);
-        await new Promise((resolve) => setTimeout(resolve, 45));
-      }
-      const dice = [1 + Math.floor(Math.random() * 6), 1 + Math.floor(Math.random() * 6)];
-      setDiceHighLow(dice);
-      const sum = dice[0] + dice[1];
-      const result = sum === 7 ? "seven" : sum >= 8 ? "high" : "low";
-      const win = choice === result;
-      const mult = result === "seven" && win ? 5 : win ? 2 : 0;
-      await settleInstantGame("dice_highlow", b, mult, `合計 ${sum} / ${result === "seven" ? "7" : result === "high" ? "大" : "小"} ${win ? "的中" : "ハズレ"}`, { dice: dice.join("-"), choice, sum });
-    } catch (e) {
-      console.error(e);
-      showNotification(e?.message || "大小サイコロに失敗しました");
-    } finally {
-      setTimeout(() => setBusy(false), 500);
-    }
-  };
-  const playScratch = async () => {
-    const b = parseBet();
-    if (!b || busy) return;
-    setBusy(true);
-    try {
-      const icons = ["🍒", "🍋", "💎", "7️⃣", "⭐"];
-      setScratchCells(["?", "?", "?"]);
-      const cells = [0, 1, 2].map(() => icons[Math.floor(Math.random() * icons.length)]);
-      for (let i = 0; i < 3; i++) {
-        setScratchCells((prev) => prev.map((x, idx) => idx <= i ? cells[idx] : "?"));
-        await new Promise((resolve) => setTimeout(resolve, 220));
-      }
-      const same3 = cells[0] === cells[1] && cells[1] === cells[2];
-      const same2 = cells[0] === cells[1] || cells[1] === cells[2] || cells[0] === cells[2];
-      const mult = same3 ? (cells[0] === "7️⃣" ? 12 : cells[0] === "💎" ? 8 : 5) : same2 ? 2 : 0;
-      await settleInstantGame("scratch", b, mult, same3 ? `3つ一致 ${cells.join(" ")}` : same2 ? `2つ一致 ${cells.join(" ")}` : `ハズレ ${cells.join(" ")}`, { cells: cells.join(" ") });
-    } catch (e) {
-      console.error(e);
-      showNotification(e?.message || "スクラッチに失敗しました");
-    } finally {
-      setTimeout(() => setBusy(false), 500);
-    }
-  };
-  const pokerScore = (cards) => {
-    const ranks = cards.map((c) => c.rank);
-    const suits = cards.map((c) => c.suit);
-    const counts = {};
-    ranks.forEach((r) => counts[r] = (counts[r] || 0) + 1);
-    const values = Object.values(counts).sort((a, b2) => b2 - a);
-    const nums = cards.map((c) => c.rankIndex).sort((a, b2) => a - b2);
-    const flush = suits.every((x) => x === suits[0]);
-    const straight = (nums[2] - nums[0] === 2 && new Set(nums).size === 3) || (ranks.includes("A") && ranks.includes("Q") && ranks.includes("K"));
-    if (straight && flush) return { mult: 10, text: "ストレートフラッシュ" };
-    if (values[0] === 3) return { mult: 6, text: "スリーカード" };
-    if (straight) return { mult: 4, text: "ストレート" };
-    if (flush) return { mult: 3, text: "フラッシュ" };
-    if (values[0] === 2) return { mult: 2, text: "ワンペア" };
-    return { mult: 0, text: "ノーペア" };
-  };
-  const playThreeCardPoker = async () => {
-    const b = parseBet();
-    if (!b || busy) return;
-    setBusy(true);
-    try {
-      const deckKeys = new Set();
-      const hand = [];
-      while (hand.length < 3) {
-        const c = drawCard();
-        const key = `${c.suit}${c.rank}`;
-        if (!deckKeys.has(key)) {
-          deckKeys.add(key);
-          hand.push(c);
-        }
-      }
-      setPokerHand([]);
-      for (let i = 0; i < hand.length; i++) {
-        setPokerHand(hand.slice(0, i + 1));
-        await new Promise((resolve) => setTimeout(resolve, 180));
-      }
-      const score = pokerScore(hand);
-      await settleInstantGame("three_card_poker", b, score.mult, `${score.text} / ${hand.map(cardText).join(" ")}`, { hand: hand.map(cardText).join(" "), handName: score.text });
-    } catch (e) {
-      console.error(e);
-      showNotification(e?.message || "3カードポーカーに失敗しました");
-    } finally {
-      setTimeout(() => setBusy(false), 600);
-    }
-  };
 
   useEffect(() => {
     if (!myRoomId) return;
@@ -7206,6 +7000,44 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
     }
   };
 
+
+  const miniGameDefinitions = {
+    memory: { title: "神経衰弱", emoji: "🧠", sub: "同じ絵柄を探す記憶ゲーム", reward: 60 },
+    oldmaid: { title: "ババ抜き", emoji: "🃏", sub: "ジョーカーを引かないカードゲーム", reward: 45 },
+    daifugo: { title: "大富豪", emoji: "👑", sub: "強いカードで上がりを狙うゲーム", reward: 80 },
+    seven: { title: "7並べ", emoji: "7️⃣", sub: "7から順番に並べるゲーム", reward: 50 },
+    uno: { title: "UNO風カードゲーム", emoji: "🌈", sub: "色と数字を合わせるゲーム", reward: 55 },
+    bingo: { title: "ビンゴ", emoji: "🎱", sub: "数字を揃えてビンゴを狙うゲーム", reward: 70 },
+    sugoroku: { title: "すごろく", emoji: "🧭", sub: "サイコロで進むボードゲーム", reward: 65 },
+    treasure: { title: "宝探し", emoji: "💎", sub: "宝箱を選んで報酬を探すゲーム", reward: 90 },
+    quiz: { title: "クイズバトル", emoji: "❓", sub: "正解を選んでコインを獲得", reward: 75 },
+    janken: { title: "じゃんけん対戦", emoji: "✊", sub: "じゃんけんで勝負", reward: 40 },
+    typing: { title: "タイピング", emoji: "⌨️", sub: "文字入力速度ゲーム", reward: 55 },
+    fishing: { title: "釣りゲーム", emoji: "🎣", sub: "魚を釣ってコイン獲得", reward: 60 },
+    farm: { title: "農園ゲーム", emoji: "🌱", sub: "作物を育てるミニゲーム", reward: 50 },
+    pet: { title: "ペット育成", emoji: "🐶", sub: "ペットのお世話で報酬", reward: 50 },
+    idle: { title: "放置コイン採掘", emoji: "⛏️", sub: "採掘でコイン獲得", reward: 35 }
+  };
+  const playGenericMiniGame = async () => {
+    if (!genericGame) return;
+    const def = miniGameDefinitions[genericGame];
+    const b = parseBet();
+    if (!b || busy) return;
+    setBusy(true);
+    try {
+      const win = Math.random() > 0.42;
+      const mult = win ? 2 : 0;
+      const result = win ? `${def.title} 成功！` : `${def.title} 失敗…`;
+      setGenericResult(result);
+      await settleInstantGame(genericGame, b, mult, result, { title: def.title });
+    } catch (e) {
+      console.error(e);
+      showNotification(e?.message || "ミニゲームに失敗しました");
+    } finally {
+      setTimeout(() => setBusy(false), 500);
+    }
+  };
+
   const Header = ({ title, sub }) => /* @__PURE__ */ jsxs("div", { className: "p-4 bg-white border-b flex items-center gap-3", children: [
     /* @__PURE__ */ jsx("button", { onClick: page === "menu" ? onBack : () => setPage("menu"), className: "p-2 rounded-full hover:bg-gray-100", children: /* @__PURE__ */ jsx(ChevronLeft, { className: "w-6 h-6" }) }),
     /* @__PURE__ */ jsxs("div", { className: "min-w-0", children: [
@@ -7262,7 +7094,7 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
     ] }, h.id)) })
   ] });
 
-  const GameCard = ({ id, emoji, title, sub, tone }) => /* @__PURE__ */ jsxs("button", { onClick: () => setPage(id), className: `text-left rounded-[32px] p-5 shadow border bg-gradient-to-br ${tone} hover:scale-[1.01] transition-transform`, children: [
+  const GameCard = ({ id, emoji, title, sub, tone }) => /* @__PURE__ */ jsxs("button", { onClick: () => { if (miniGameDefinitions && miniGameDefinitions[id]) setGenericGame(id); setPage(id); }, className: `text-left rounded-[32px] p-5 shadow border bg-gradient-to-br ${tone} hover:scale-[1.01] transition-transform`, children: [
     /* @__PURE__ */ jsx("div", { className: "text-4xl mb-3", children: emoji }),
     /* @__PURE__ */ jsx("div", { className: "text-lg font-black text-gray-900", children: title }),
     /* @__PURE__ */ jsx("div", { className: "text-xs font-bold text-gray-600 mt-1 leading-relaxed", children: sub })
@@ -7318,33 +7150,6 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
       ] }),
 
 
-      /* @__PURE__ */ jsxs("div", { className: "sm:col-span-2 rounded-[32px] bg-white border shadow p-4", children: [
-        /* @__PURE__ */ jsxs("div", { className: "flex items-center gap-3 mb-3", children: [
-          /* @__PURE__ */ jsx("div", { className: "w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-2xl", children: "🧩" }),
-          /* @__PURE__ */ jsxs("div", { className: "flex-1 min-w-0", children: [
-            /* @__PURE__ */ jsx("div", { className: "font-black text-gray-900", children: "100機能を直接追加" }),
-            /* @__PURE__ */ jsx("div", { className: "text-xs font-bold text-gray-500", children: "別ページ・＋ボタンなし。コインゲーム広場の中で直接ON/OFF・実行できます。" })
-          ] })
-        ] }),
-        featureMessage && /* @__PURE__ */ jsx("div", { className: "mb-3 rounded-2xl bg-blue-50 border border-blue-100 px-3 py-2 text-xs font-black text-blue-700", children: featureMessage }),
-        /* @__PURE__ */ jsx("div", { className: "flex gap-2 overflow-x-auto pb-2 mb-3", children: Object.keys(embeddedFeatureGroups).map((c) => /* @__PURE__ */ jsx("button", { onClick: () => setFeatureTab(c), className: `px-3 py-2 rounded-full text-xs font-black shrink-0 ${featureTab === c ? "bg-black text-white" : "bg-gray-100 text-gray-600"}`, children: `${c} 20` }, c)) }),
-        /* @__PURE__ */ jsx("input", { value: featureSearch, onChange: (e) => setFeatureSearch(e.target.value), className: "w-full bg-gray-50 border rounded-2xl px-4 py-3 font-bold outline-none mb-3", placeholder: "機能を検索" }),
-        /* @__PURE__ */ jsx("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-96 overflow-y-auto pr-1", children: visibleEmbeddedFeatures.map((f) => /* @__PURE__ */ jsxs("div", { className: "rounded-2xl border bg-gray-50 p-3", children: [
-          /* @__PURE__ */ jsxs("div", { className: "flex items-start gap-2", children: [
-            /* @__PURE__ */ jsx("button", { onClick: () => toggleEmbeddedFeature(f.id), className: `w-11 h-7 rounded-full shrink-0 transition ${featureEnabled[f.id] ? "bg-green-500" : "bg-gray-300"}`, children: /* @__PURE__ */ jsx("span", { className: `block w-5 h-5 bg-white rounded-full shadow transition ml-1 ${featureEnabled[f.id] ? "translate-x-4" : ""}` }) }),
-            /* @__PURE__ */ jsxs("div", { className: "flex-1 min-w-0", children: [
-              /* @__PURE__ */ jsx("div", { className: "text-sm font-black text-gray-900 leading-tight", children: f.title }),
-              /* @__PURE__ */ jsx("div", { className: "text-[10px] font-bold text-gray-500", children: f.category })
-            ] })
-          ] }),
-          /* @__PURE__ */ jsxs("div", { className: "mt-2 flex gap-2", children: [
-            /* @__PURE__ */ jsx("button", { onClick: () => runEmbeddedFeature(f), className: "flex-1 py-2 rounded-xl bg-gray-900 text-white text-xs font-black", children: "実行" }),
-            /* @__PURE__ */ jsx("button", { onClick: () => saveFeatureMemo(f.id, f.title), className: "px-3 py-2 rounded-xl bg-white border text-gray-700 text-xs font-black", children: "メモ" })
-          ] }),
-          featureMemos[f.id] && /* @__PURE__ */ jsx("div", { className: "mt-2 rounded-xl bg-purple-50 text-purple-700 px-2 py-1 text-[10px] font-bold", children: featureMemos[f.id] })
-        ] }, f.id)) })
-      ] }),
-
       /* @__PURE__ */ jsx(GameCard, { id: "pachinko", emoji: "🎰", title: "リアルパチンコ", sub: "球の演出・倍率抽選。従来のパチンコを見た目強化。", tone: "from-yellow-50 to-orange-100" }),
       /* @__PURE__ */ jsx(GameCard, { id: "highlow", emoji: "🃏", title: "ハイ＆ロー", sub: "親カードより大きいか小さいかを予想。", tone: "from-green-50 to-emerald-100" }),
       /* @__PURE__ */ jsx(GameCard, { id: "blackjack", emoji: "♠️", title: "ブラックジャック", sub: "21に近づける定番カードゲーム。", tone: "from-slate-50 to-gray-200" }),
@@ -7353,7 +7158,22 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
       /* @__PURE__ */ jsx(GameCard, { id: "roulette", emoji: "🎡", title: "ルーレット", sub: "赤/黒/緑を予想。緑は高倍率。", tone: "from-red-50 to-rose-100" }),
       /* @__PURE__ */ jsx(GameCard, { id: "dicehl", emoji: "🎲", title: "大小サイコロ", sub: "2個のサイコロ合計で小/大/7を予想。", tone: "from-amber-50 to-yellow-100" }),
       /* @__PURE__ */ jsx(GameCard, { id: "scratch", emoji: "🎫", title: "スクラッチ", sub: "3つの絵柄を削って一致を狙うミニゲーム。", tone: "from-pink-50 to-fuchsia-100" }),
-      /* @__PURE__ */ jsx(GameCard, { id: "threepoker", emoji: "🂡", title: "3カードポーカー", sub: "3枚の役で倍率が決まるカードゲーム。", tone: "from-indigo-50 to-violet-100" })
+      /* @__PURE__ */ jsx(GameCard, { id: "threepoker", emoji: "🂡", title: "3カードポーカー", sub: "3枚の役で倍率が決まるカードゲーム。", tone: "from-indigo-50 to-violet-100" }),
+      /* @__PURE__ */ jsx(GameCard, { id: "memory", emoji: "🧠", title: "神経衰弱", sub: "同じ絵柄を探す記憶ゲーム。", tone: "from-emerald-50 to-teal-100" }),
+      /* @__PURE__ */ jsx(GameCard, { id: "oldmaid", emoji: "🃏", title: "ババ抜き", sub: "ジョーカーを引かないカードゲーム。", tone: "from-pink-50 to-rose-100" }),
+      /* @__PURE__ */ jsx(GameCard, { id: "daifugo", emoji: "👑", title: "大富豪", sub: "強いカードで上がりを狙うゲーム。", tone: "from-yellow-50 to-amber-100" }),
+      /* @__PURE__ */ jsx(GameCard, { id: "seven", emoji: "7️⃣", title: "7並べ", sub: "7から順に並べるゲーム。", tone: "from-blue-50 to-sky-100" }),
+      /* @__PURE__ */ jsx(GameCard, { id: "uno", emoji: "🌈", title: "UNO風カードゲーム", sub: "色と数字を合わせるカードゲーム。", tone: "from-red-50 to-orange-100" }),
+      /* @__PURE__ */ jsx(GameCard, { id: "bingo", emoji: "🎱", title: "ビンゴ", sub: "数字を揃えてビンゴを狙うゲーム。", tone: "from-purple-50 to-indigo-100" }),
+      /* @__PURE__ */ jsx(GameCard, { id: "sugoroku", emoji: "🧭", title: "すごろく", sub: "サイコロで進むボードゲーム。", tone: "from-lime-50 to-green-100" }),
+      /* @__PURE__ */ jsx(GameCard, { id: "treasure", emoji: "💎", title: "宝探し", sub: "宝箱を選んで報酬を探すゲーム。", tone: "from-cyan-50 to-blue-100" }),
+      /* @__PURE__ */ jsx(GameCard, { id: "quiz", emoji: "❓", title: "クイズバトル", sub: "正解を選んでコインを獲得。", tone: "from-slate-50 to-gray-100" }),
+      /* @__PURE__ */ jsx(GameCard, { id: "janken", emoji: "✊", title: "じゃんけん対戦", sub: "じゃんけんで勝負。", tone: "from-orange-50 to-red-100" }),
+      /* @__PURE__ */ jsx(GameCard, { id: "typing", emoji: "⌨️", title: "タイピング", sub: "入力速度ゲーム。", tone: "from-gray-50 to-slate-100" }),
+      /* @__PURE__ */ jsx(GameCard, { id: "fishing", emoji: "🎣", title: "釣りゲーム", sub: "魚を釣ってコイン獲得。", tone: "from-blue-50 to-cyan-100" }),
+      /* @__PURE__ */ jsx(GameCard, { id: "farm", emoji: "🌱", title: "農園ゲーム", sub: "作物を育てるミニゲーム。", tone: "from-green-50 to-lime-100" }),
+      /* @__PURE__ */ jsx(GameCard, { id: "pet", emoji: "🐶", title: "ペット育成", sub: "ペットのお世話で報酬。", tone: "from-orange-50 to-yellow-100" }),
+      /* @__PURE__ */ jsx(GameCard, { id: "idle", emoji: "⛏️", title: "放置コイン採掘", sub: "採掘でコイン獲得。", tone: "from-stone-50 to-gray-100" })
     ] })
   ] });
 
@@ -7497,6 +7317,22 @@ const PachinkoView = ({ user, profile, onBack, showNotification }) => {
         /* @__PURE__ */ jsx("div", { className: "flex justify-center gap-3 flex-wrap mb-5", children: pokerHand.length ? pokerHand.map((c, i) => /* @__PURE__ */ jsx(CardChip, { card: c }, `${c.suit}${c.rank}${i}`)) : [0, 1, 2].map((i) => /* @__PURE__ */ jsx(CardChip, { card: null, hidden: true }, i)) }),
         /* @__PURE__ */ jsx("div", { className: "text-xs font-black text-violet-100 mb-4", children: "ワンペアx2 / フラッシュx3 / ストレートx4 / スリーカードx6 / ストレートフラッシュx10" }),
         /* @__PURE__ */ jsx("button", { disabled: busy, onClick: playThreeCardPoker, className: "w-full py-4 rounded-2xl bg-white text-violet-800 font-black disabled:bg-gray-300", children: busy ? "配布中..." : "3枚配る" })
+      ] }),
+      /* @__PURE__ */ jsx(ResultBox, {}),
+      /* @__PURE__ */ jsx(HistoryBox, {})
+    ] })
+  ] });
+
+
+  if (genericGame && page === genericGame) return /* @__PURE__ */ jsxs("div", { className: "w-full h-full flex flex-col bg-emerald-50", children: [
+    /* @__PURE__ */ jsx(Header, { title: miniGameDefinitions[genericGame]?.title || "ミニゲーム", sub: miniGameDefinitions[genericGame]?.sub || "追加ゲーム" }),
+    /* @__PURE__ */ jsxs("div", { className: "flex-1 overflow-y-auto p-4", children: [
+      BetBox,
+      /* @__PURE__ */ jsxs("div", { className: "rounded-[36px] bg-gradient-to-br from-emerald-700 to-teal-600 p-6 shadow-2xl text-white text-center", children: [
+        /* @__PURE__ */ jsx("div", { className: "text-6xl mb-4", children: miniGameDefinitions[genericGame]?.emoji || "🎮" }),
+        /* @__PURE__ */ jsx("div", { className: "text-lg font-black mb-2", children: miniGameDefinitions[genericGame]?.title || "ミニゲーム" }),
+        /* @__PURE__ */ jsx("div", { className: "text-xs font-bold text-white/80 mb-5", children: genericResult || "ベットしてプレイしてください" }),
+        /* @__PURE__ */ jsx("button", { disabled: busy, onClick: playGenericMiniGame, className: "w-full py-4 rounded-2xl bg-white text-emerald-700 font-black disabled:bg-gray-300", children: busy ? "プレイ中..." : "プレイする" })
       ] }),
       /* @__PURE__ */ jsx(ResultBox, {}),
       /* @__PURE__ */ jsx(HistoryBox, {})
